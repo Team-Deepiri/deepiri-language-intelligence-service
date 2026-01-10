@@ -13,8 +13,9 @@ RUN npm install --legacy-peer-deps && \
 FROM node:20-alpine
 WORKDIR /app
 
-# Install curl for health checks
-RUN apk add --no-cache curl
+# Install curl for health checks and OpenSSL for Prisma
+# Alpine uses OpenSSL 3.x, Prisma will use linux-musl-openssl-3.0.x binary
+RUN apk add --no-cache curl openssl
 
 # Copy package files
 COPY backend/deepiri-language-intelligence-service/package*.json ./
@@ -31,7 +32,12 @@ RUN npm install --legacy-peer-deps file:/shared-utils && \
 COPY backend/deepiri-language-intelligence-service/src ./src
 COPY backend/deepiri-language-intelligence-service/prisma ./prisma
 
+# Copy baseline migration script
+COPY --chown=root:root shared/scripts/prisma-baseline.sh /usr/local/bin/prisma-baseline.sh
+RUN chmod +x /usr/local/bin/prisma-baseline.sh
+
 # Generate Prisma client
+# Binary target is specified in schema.prisma for Alpine compatibility
 RUN npx prisma generate
 
 # Build TypeScript

@@ -106,9 +106,8 @@ const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
 };
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  logger.info(`Language Intelligence Service running on port ${PORT}`);
-});
+// Note: Server is started in index.ts, not here
+// This file only exports the configured Express app
 
 export default app;
 
