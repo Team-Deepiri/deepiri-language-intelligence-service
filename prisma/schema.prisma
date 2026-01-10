@@ -1,0 +1,408 @@
+// Prisma Schema for Language Intelligence Service
+// PostgreSQL database schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// PHASE 1: LEASE ABSTRACTION MODELS
+// ============================================
+
+model Lease {
+  id                String        @id @default(uuid()) @db.Uuid
+  leaseNumber       String        @unique @db.VarChar(100)
+  tenantName        String        @map("tenant_name") @db.VarChar(255)
+  landlordName      String?       @map("landlord_name") @db.VarChar(255)
+  propertyAddress   String        @map("property_address") @db.VarChar(500)
+  propertyType      String?       @map("property_type") @db.VarChar(100) // "OFFICE", "RETAIL", "INDUSTRIAL", etc.
+  squareFootage     Int?          @map("square_footage")
+  
+  // Document storage
+  documentUrl       String        @map("document_url") @db.Text
+  documentStorageKey String?       @map("document_storage_key") @db.VarChar(255)
+  rawText           String?       @map("raw_text") @db.Text
+  documentType      String        @default("PDF") @map("document_type") @db.VarChar(50)
+  fileSize          Int?          @map("file_size")
+  
+  // Dates
+  startDate         DateTime      @map("start_date") @db.Timestamp
+  endDate           DateTime      @map("end_date") @db.Timestamp
+  
+  // Processing status
+  status            LeaseStatus   @default(PENDING)
+  processingStatus  String?       @map("processing_status") @db.VarChar(50)
+  processingError   String?       @map("processing_error") @db.Text
+  processedAt       DateTime?     @map("processed_at") @db.Timestamp
+  processingTimeMs  Int?          @map("processing_time_ms")
+  
+  // Abstracted data
+  abstractedTerms   Json?         @map("abstracted_terms")
+  financialTerms    Json?         @map("financial_terms")
+  keyDates          Json?         @map("key_dates")
+  propertyDetails   Json?         @map("property_details")
+  keyClauses        Json?         @map("key_clauses")
+  
+  // Confidence scores
+  extractionConfidence Float?      @map("extraction_confidence") @db.DoublePrecision
+  validationScore     Float?       @map("validation_score") @db.DoublePrecision
+  
+  // User/tenant information
+  userId            String?       @map("user_id") @db.Uuid
+  organizationId    String?       @map("organization_id") @db.Uuid
+  
+  // Metadata
+  tags              String[]      @default([])
+  notes             String?       @db.Text
+  metadata          Json?         @default("{}")
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamp
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamp
+  createdBy         String?       @map("created_by") @db.Uuid
+  updatedBy         String?       @map("updated_by") @db.Uuid
+  
+  // Relations
+  versions          LeaseVersion[]
+  obligations       Obligation[]
+  
+  @@index([leaseNumber])
+  @@index([tenantName])
+  @@index([status])
+  @@index([userId])
+  @@index([organizationId])
+  @@index([startDate])
+  @@map("leases")
+}
+
+model LeaseVersion {
+  id                String        @id @default(uuid()) @db.Uuid
+  leaseId           String        @map("lease_id") @db.Uuid
+  versionNumber     Int           @map("version_number")
+  documentUrl       String        @map("document_url") @db.Text
+  rawText           String        @map("raw_text") @db.Text
+  abstractedTerms   Json          @map("abstracted_terms")
+  
+  // Change tracking
+  changes           Json?         // Diff from previous version
+  changeSummary     String?       @map("change_summary") @db.Text
+  changeType        String?       @map("change_type") @db.VarChar(50) // "AMENDMENT", "RENEWAL", "TERMINATION", "NEW_VERSION"
+  significantChanges Boolean       @default(false) @map("significant_changes")
+  
+  // Processing metadata
+  processedAt       DateTime      @default(now()) @map("processed_at") @db.Timestamp
+  processingTimeMs  Int?          @map("processing_time_ms")
+  
+  // Metadata
+  metadata          Json?         @default("{}")
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamp
+  createdBy         String?       @map("created_by") @db.Uuid
+  
+  // Relations
+  lease             Lease         @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  
+  @@unique([leaseId, versionNumber])
+  @@index([leaseId])
+  @@index([versionNumber])
+  @@map("lease_versions")
+}
+
+// ============================================
+// PHASE 2: CONTRACT INTELLIGENCE MODELS
+// ============================================
+
+model Contract {
+  id                String        @id @default(uuid()) @db.Uuid
+  contractNumber    String        @unique @db.VarChar(100)
+  contractName      String        @map("contract_name") @db.VarChar(255)
+  partyA            String        @db.VarChar(255)
+  partyB            String        @db.VarChar(255)
+  contractType      String?       @map("contract_type") @db.VarChar(100) // "SERVICE", "SUPPLY", "MSA", "NDA", etc.
+  jurisdiction      String?       @db.VarChar(100)
+  effectiveDate     DateTime      @map("effective_date") @db.Timestamp
+  expirationDate    DateTime?     @map("expiration_date") @db.Timestamp
+  
+  // Document storage
+  documentUrl       String        @map("document_url") @db.Text
+  documentStorageKey String?       @map("document_storage_key") @db.VarChar(255)
+  rawText           String?       @map("raw_text") @db.Text
+  documentType      String        @default("PDF") @map("document_type") @db.VarChar(50)
+  fileSize          Int?          @map("file_size")
+  
+  // Processing status
+  status            ContractStatus @default(PENDING)
+  processingStatus  String?       @map("processing_status") @db.VarChar(50)
+  processingError   String?       @map("processing_error") @db.Text
+  processedAt       DateTime?     @map("processed_at") @db.Timestamp
+  processingTimeMs  Int?          @map("processing_time_ms")
+  
+  // Abstracted data
+  abstractedTerms   Json?         @map("abstracted_terms")
+  keyClauses        Json?         @map("key_clauses")
+  financialTerms    Json?         @map("financial_terms")
+  terminationTerms  Json?         @map("termination_terms")
+  renewalTerms      Json?         @map("renewal_terms")
+  
+  // Confidence scores
+  extractionConfidence Float?     @map("extraction_confidence") @db.DoublePrecision
+  validationScore      Float?     @map("validation_score") @db.DoublePrecision
+  
+  // User/tenant information
+  userId            String?       @map("user_id") @db.Uuid
+  organizationId    String?       @map("organization_id") @db.Uuid
+  
+  // Metadata
+  tags              String[]      @default([])
+  notes             String?       @db.Text
+  metadata          Json?         @default("{}")
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamp
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamp
+  createdBy         String?       @map("created_by") @db.Uuid
+  updatedBy         String?       @map("updated_by") @db.Uuid
+  
+  // Relations
+  clauses           Clause[]
+  versions          ContractVersion[]
+  obligations       Obligation[]
+  dependencies      ObligationDependency[] @relation("SourceContract")
+  targetDependencies ObligationDependency[] @relation("TargetContract")
+  
+  @@index([contractNumber])
+  @@index([partyA])
+  @@index([partyB])
+  @@index([status])
+  @@index([userId])
+  @@index([organizationId])
+  @@index([effectiveDate])
+  @@map("contracts")
+}
+
+model Clause {
+  id                String        @id @default(uuid()) @db.Uuid
+  contractId        String        @map("contract_id") @db.Uuid
+  clauseType        String        @map("clause_type") @db.VarChar(100) // "TERMINATION", "PAYMENT", "LIABILITY", etc.
+  clauseTitle       String?       @map("clause_title") @db.VarChar(255)
+  clauseText        String        @map("clause_text") @db.Text
+  clauseSummary     String?       @map("clause_summary") @db.Text
+  sectionNumber     String?       @map("section_number") @db.VarChar(50)
+  pageNumber        Int?          @map("page_number")
+  
+  // Version tracking
+  versionNumber     Int           @map("version_number")
+  previousVersionId String?       @map("previous_version_id") @db.Uuid
+  
+  // Evolution tracking
+  changes           Json?         // What changed from previous version
+  changeType        String?       @map("change_type") @db.VarChar(50) // "ADDED", "MODIFIED", "DELETED", "UNCHANGED"
+  changeSummary     String?       @map("change_summary") @db.Text
+  significantChange Boolean       @default(false) @map("significant_change")
+  
+  // Extraction metadata
+  extractedAt       DateTime      @default(now()) @map("extracted_at") @db.Timestamp
+  confidence        Float?        @db.DoublePrecision
+  extractionMethod  String?       @map("extraction_method") @db.VarChar(50) // "LLM", "RULE_BASED", "HYBRID"
+  
+  // Relations
+  contract          Contract      @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  previousVersion   Clause?       @relation("ClauseVersions", fields: [previousVersionId], references: [id])
+  nextVersions      Clause[]      @relation("ClauseVersions")
+  
+  @@index([contractId, versionNumber])
+  @@index([clauseType])
+  @@index([versionNumber])
+  @@index([changeType])
+  @@map("clauses")
+}
+
+model ContractVersion {
+  id                String        @id @default(uuid()) @db.Uuid
+  contractId        String        @map("contract_id") @db.Uuid
+  versionNumber     Int           @map("version_number")
+  documentUrl       String        @map("document_url") @db.Text
+  rawText           String        @map("raw_text") @db.Text
+  abstractedTerms   Json          @map("abstracted_terms")
+  
+  // Change tracking
+  changes           Json?         // Diff from previous version
+  changeSummary     String?       @map("change_summary") @db.Text
+  changeType        String?       @map("change_type") @db.VarChar(50) // "AMENDMENT", "RENEWAL", "TERMINATION", "NEW_VERSION"
+  significantChanges Boolean      @default(false) @map("significant_changes")
+  
+  // Processing metadata
+  processedAt       DateTime      @default(now()) @map("processed_at") @db.Timestamp
+  processingTimeMs  Int?          @map("processing_time_ms")
+  
+  // Metadata
+  metadata          Json?         @default("{}")
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamp
+  createdBy         String?       @map("created_by") @db.Uuid
+  
+  // Relations
+  contract          Contract      @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  
+  @@unique([contractId, versionNumber])
+  @@index([contractId])
+  @@index([versionNumber])
+  @@map("contract_versions")
+}
+
+// ============================================
+// SHARED: OBLIGATION MODELS
+// ============================================
+
+model Obligation {
+  id                String        @id @default(uuid()) @db.Uuid
+  leaseId           String?       @map("lease_id") @db.Uuid
+  contractId        String?       @map("contract_id") @db.Uuid
+  
+  description       String        @db.Text
+  obligationType    ObligationType @map("obligation_type")
+  party             String        @db.VarChar(50) // "TENANT", "LANDLORD", "PARTY_A", "PARTY_B", "BOTH"
+  
+  // Dates
+  deadline          DateTime?     @db.Timestamp
+  startDate         DateTime?     @map("start_date") @db.Timestamp
+  endDate           DateTime?     @map("end_date") @db.Timestamp
+  
+  // Frequency
+  frequency         String?       @db.VarChar(50) // "ONE_TIME", "MONTHLY", "QUARTERLY", "ANNUAL", "ONGOING"
+  
+  // Financial
+  amount            Float?        @db.DoublePrecision
+  currency          String?       @default("USD") @db.VarChar(10)
+  
+  // Source
+  sourceClause      String?       @map("source_clause") @db.Text
+  confidence        Float?        @db.DoublePrecision
+  
+  // Status
+  status            ObligationStatus @default(PENDING)
+  completedAt       DateTime?     @map("completed_at") @db.Timestamp
+  
+  // Assignment
+  owner             String?       @db.VarChar(255)
+  ownerEmail        String?       @map("owner_email") @db.VarChar(255)
+  
+  // Metadata
+  tags              String[]      @default([])
+  notes             String?       @db.Text
+  metadata          Json?         @default("{}")
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamp
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamp
+  
+  // Relations
+  lease             Lease?        @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  contract          Contract?     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  sourceDependencies ObligationDependency[] @relation("SourceObligations")
+  targetDependencies ObligationDependency[] @relation("TargetObligations")
+  
+  @@index([leaseId])
+  @@index([contractId])
+  @@index([status])
+  @@index([deadline])
+  @@index([obligationType])
+  @@map("obligations")
+}
+
+model ObligationDependency {
+  id                String        @id @default(uuid()) @db.Uuid
+  sourceObligationId String       @map("source_obligation_id") @db.Uuid
+  targetObligationId String       @map("target_obligation_id") @db.Uuid
+  dependencyType    DependencyType @map("dependency_type")
+  description       String?       @db.Text
+  confidence        Float?        @db.DoublePrecision // 0-1 confidence in dependency
+  
+  // Context
+  sourceClause      String?       @map("source_clause") @db.Text
+  targetClause      String?       @map("target_clause") @db.Text
+  triggerCondition String?       @map("trigger_condition") @db.Text
+  
+  // Cross-document dependencies
+  sourceContractId  String?       @map("source_contract_id") @db.Uuid
+  targetContractId  String?       @map("target_contract_id") @db.Uuid
+  sourceLeaseId     String?       @map("source_lease_id") @db.Uuid
+  targetLeaseId     String?       @map("target_lease_id") @db.Uuid
+  
+  // Metadata
+  discoveredAt      DateTime      @default(now()) @map("discovered_at") @db.Timestamp
+  discoveredBy       String?       @map("discovered_by") @db.VarChar(50) // "LLM", "RULE_BASED", "ML_MODEL"
+  verified          Boolean        @default(false)
+  verifiedAt        DateTime?      @map("verified_at") @db.Timestamp
+  verifiedBy        String?        @map("verified_by") @db.Uuid
+  metadata          Json?          @default("{}")
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamp
+  
+  // Relations
+  sourceObligation  Obligation    @relation("SourceObligations", fields: [sourceObligationId], references: [id], onDelete: Cascade)
+  targetObligation  Obligation    @relation("TargetObligations", fields: [targetObligationId], references: [id], onDelete: Cascade)
+  sourceContract    Contract?     @relation("SourceContract", fields: [sourceContractId], references: [id])
+  targetContract    Contract?     @relation("TargetContract", fields: [targetContractId], references: [id])
+  
+  @@unique([sourceObligationId, targetObligationId])
+  @@index([sourceObligationId])
+  @@index([targetObligationId])
+  @@index([sourceContractId])
+  @@index([targetContractId])
+  @@index([dependencyType])
+  @@index([verified])
+  @@map("obligation_dependencies")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum LeaseStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  ERROR
+  ARCHIVED
+}
+
+enum ContractStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  ERROR
+  ARCHIVED
+}
+
+enum ObligationType {
+  PAYMENT
+  MAINTENANCE
+  NOTIFICATION
+  COMPLIANCE
+  RENEWAL
+  TERMINATION
+  INSURANCE
+  TAX
+  UTILITY
+  REPAIR
+  INSPECTION
+  DELIVERY
+  PERFORMANCE
+  CONFIDENTIALITY
+  OTHER
+}
+
+enum ObligationStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  OVERDUE
+  CANCELLED
+}
+
+enum DependencyType {
+  TRIGGERS      // Source obligation triggers target
+  BLOCKS        // Source obligation blocks target
+  MODIFIES      // Source obligation modifies target
+  REQUIRES      // Source obligation requires target
+  PRECEDES      // Source obligation must occur before target
+  CONFLICTS     // Source obligation conflicts with target
+}
+
