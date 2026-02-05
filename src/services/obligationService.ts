@@ -1,5 +1,5 @@
 import { prisma } from '../db';
-import { logger } from '../utils/logger';
+import { secureLog } from '@deepiri/shared-utils';
 import type { Obligation, Prisma } from '@prisma/client';
 
 export interface CreateObligationInput {
@@ -66,7 +66,7 @@ export class ObligationService {
 
         createdObligations.push(obligation);
       } catch (error: any) {
-        logger.error('Failed to create obligation', {
+        secureLog('error', 'Failed to create obligation', {
           leaseId,
           contractId,
           error: error.message,
@@ -75,7 +75,7 @@ export class ObligationService {
       }
     }
 
-    logger.info('Obligations created', {
+    secureLog('info', 'Obligations created', {
       leaseId,
       contractId,
       count: createdObligations.length,

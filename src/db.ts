@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { logger } from './utils/logger';
+import { secureLog } from '@deepiri/shared-utils';
 
 let prisma: PrismaClient;
 
@@ -10,9 +10,9 @@ export async function connectDatabase(): Promise<void> {
     });
     
     await prisma.$connect();
-    logger.info('Language Intelligence Service: Connected to PostgreSQL');
+    secureLog('info', 'Language Intelligence Service: Connected to PostgreSQL');
   } catch (error: any) {
-    logger.error('Language Intelligence Service: Failed to connect to PostgreSQL', error);
+    secureLog('error', 'Language Intelligence Service: Failed to connect to PostgreSQL', error);
     throw error;
   }
 }

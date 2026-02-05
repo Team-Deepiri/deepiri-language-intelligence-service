@@ -6,7 +6,7 @@ import { obligationService } from '../services/obligationService';
 import { documentService } from '../services/documentService';
 import { authenticate } from './middleware/auth';
 import { handleValidationErrors } from './middleware/validation';
-import { logger } from '../utils/logger';
+import { secureLog } from '@deepiri/shared-utils';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -53,7 +53,7 @@ router.post(
       
       // Trigger async processing
       leaseAbstractionService.processLeaseAsync(lease.id).catch((error) => {
-        logger.error('Failed to process lease asynchronously', { leaseId: lease.id, error });
+        secureLog('error', 'Failed to process lease asynchronously', { leaseId: lease.id, error });
       });
       
       res.status(201).json({
@@ -61,7 +61,7 @@ router.post(
         data: lease,
       });
     } catch (error: any) {
-      logger.error('Error uploading lease', { error: error.message });
+      secureLog('error', 'Error uploading lease', { error: error.message });
       res.status(500).json({ error: 'Failed to upload lease', message: error.message });
     }
   }
@@ -134,7 +134,7 @@ router.post(
         data: version,
       });
     } catch (error: any) {
-      logger.error('Error uploading lease version', { leaseId: req.params.id, error: error.message });
+      secureLog('error', 'Error uploading lease version', { leaseId: req.params.id, error: error.message });
       res.status(500).json({ error: 'Failed to upload lease version', message: error.message });
     }
   }
@@ -162,7 +162,7 @@ router.get(
       
       res.json({ success: true, data: diff });
     } catch (error: any) {
-      logger.error('Error comparing versions', { error: error.message });
+      secureLog('error', 'Error comparing versions', { error: error.message });
       res.status(500).json({ error: 'Failed to compare versions', message: error.message });
     }
   }

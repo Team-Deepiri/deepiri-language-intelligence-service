@@ -1,7 +1,7 @@
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { config } from '../config/environment';
-import { logger } from '../utils/logger';
+import { secureLog } from '@deepiri/shared-utils';
 import { v4 as uuidv4 } from 'uuid';
 import * as path from 'path';
 import * as mime from 'mime-types';
@@ -77,7 +77,7 @@ export class DocumentService {
         ? `https://${this.bucket}.s3.${config.storage.region}.amazonaws.com/${storageKey}`
         : `${config.storage.endpoint}/${this.bucket}/${storageKey}`;
 
-      logger.info('Document uploaded', {
+      secureLog('info', 'Document uploaded', {
         storageKey,
         fileSize: file.size,
         mimeType,
@@ -90,7 +90,7 @@ export class DocumentService {
         mimeType,
       };
     } catch (error: any) {
-      logger.error('Failed to upload document', { error: error.message });
+      secureLog('error', 'Failed to upload document', { error: error.message });
       throw new Error(`Document upload failed: ${error.message}`);
     }
   }
@@ -101,7 +101,7 @@ export class DocumentService {
    */
   async extractText(documentUrl: string, documentType?: string): Promise<string> {
     try {
-      logger.info('Extracting text from document', { documentUrl, documentType });
+      secureLog('info', 'Extracting text from document', { documentUrl, documentType });
       
       // Determine document type from URL if not provided
       if (!documentType) {
@@ -139,7 +139,7 @@ export class DocumentService {
 
       return response.data.text || '';
     } catch (error: any) {
-      logger.error('Failed to extract text', {
+      secureLog('error', 'Failed to extract text', {
         documentUrl,
         documentType,
         error: error.message,
@@ -159,9 +159,9 @@ export class DocumentService {
       });
 
       await this.s3Client.send(command);
-      logger.info('Document deleted', { storageKey });
+      secureLog('info', 'Document deleted', { storageKey });
     } catch (error: any) {
-      logger.error('Failed to delete document', {
+      secureLog('error', 'Failed to delete document', {
         storageKey,
         error: error.message,
       });

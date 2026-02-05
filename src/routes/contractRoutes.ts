@@ -7,7 +7,7 @@ import { documentService } from '../services/documentService';
 import { cyrexClient } from '../services/cyrexClient';
 import { authenticate } from './middleware/auth';
 import { handleValidationErrors } from './middleware/validation';
-import { logger } from '../utils/logger';
+import { secureLog } from '@deepiri/shared-utils';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -54,7 +54,7 @@ router.post(
       
       // Trigger async processing
       contractIntelligenceService.processContractAsync(contract.id).catch((error) => {
-        logger.error('Failed to process contract asynchronously', { contractId: contract.id, error });
+        secureLog('error', 'Failed to process contract asynchronously', { contractId: contract.id, error });
       });
       
       res.status(201).json({
@@ -62,7 +62,7 @@ router.post(
         data: contract,
       });
     } catch (error: any) {
-      logger.error('Error uploading contract', { error: error.message });
+      secureLog('error', 'Error uploading contract', { error: error.message });
       res.status(500).json({ error: 'Failed to upload contract', message: error.message });
     }
   }
@@ -166,7 +166,7 @@ router.get(
         data: evolution,
       });
     } catch (error: any) {
-      logger.error('Error fetching clause evolution', { error: error.message });
+      secureLog('error', 'Error fetching clause evolution', { error: error.message });
       res.status(500).json({ error: 'Failed to get clause evolution', message: error.message });
     }
   }
@@ -203,7 +203,7 @@ router.get(
         data: graphResult.data,
       });
     } catch (error: any) {
-      logger.error('Error building dependency graph', { error: error.message });
+      secureLog('error', 'Error building dependency graph', { error: error.message });
       res.status(500).json({ error: 'Failed to build dependency graph', message: error.message });
     }
   }
@@ -234,7 +234,7 @@ router.get(
         data: cascading.data,
       });
     } catch (error: any) {
-      logger.error('Error finding cascading obligations', { error: error.message });
+      secureLog('error', 'Error finding cascading obligations', { error: error.message });
       res.status(500).json({ error: 'Failed to find cascading obligations', message: error.message });
     }
   }
@@ -267,7 +267,7 @@ router.post(
         data: version,
       });
     } catch (error: any) {
-      logger.error('Error uploading contract version', { contractId: req.params.id, error: error.message });
+      secureLog('error', 'Error uploading contract version', { contractId: req.params.id, error: error.message });
       res.status(500).json({ error: 'Failed to upload contract version', message: error.message });
     }
   }
@@ -295,7 +295,7 @@ router.get(
       
       res.json({ success: true, data: diff });
     } catch (error: any) {
-      logger.error('Error comparing versions', { error: error.message });
+      secureLog('error', 'Error comparing versions', { error: error.message });
       res.status(500).json({ error: 'Failed to compare versions', message: error.message });
     }
   }
