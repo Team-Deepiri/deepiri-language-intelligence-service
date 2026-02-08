@@ -30,8 +30,12 @@ export const config = {
     apiKey: process.env.CYREX_API_KEY || '',
   },
   
+  // Auth is handled by API Gateway - this service just reads user context from headers
+  // No need for AUTH_SERVICE_URL - gateway validates and passes context
   auth: {
-    authServiceUrl: process.env.AUTH_SERVICE_URL || 'http://localhost:5001',
+    // Legacy - kept for backwards compatibility but not used
+    authServiceUrl: '',
+    enabled: false,
   },
 };
 

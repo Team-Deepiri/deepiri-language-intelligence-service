@@ -39,6 +39,24 @@ This service provides:
 - `GET /api/v1/contracts/:id/obligations/dependencies` - Get dependency graph
 - `GET /api/v1/obligations/:id/cascade` - Find cascading obligations
 
+### Vector Store Management
+- `GET /api/v1/vector-store/collections/types` - Get available collection types
+- `GET /api/v1/vector-store/collections` - List all collections
+- `GET /api/v1/vector-store/collections/:collectionName/stats` - Get collection statistics
+- `POST /api/v1/vector-store/collections/:collectionName` - Create/verify collection
+- `POST /api/v1/vector-store/collections/:collectionName/documents` - Add documents to collection
+- `DELETE /api/v1/vector-store/collections/:collectionName/documents` - Remove documents from collection
+- `GET /api/v1/vector-store/collections/:collectionName/documents` - View documents (with query)
+- `POST /api/v1/vector-store/collections/:collectionName/documents/search` - Search documents in collection
+
+**Collection Types:**
+- `regulatory_documents` - Regulatory language evolution tracking
+- `contracts` - Contract clause evolution and intelligence
+- `leases` - Lease abstraction and management
+- `obligations` - Obligation tracking and dependency graphs
+- `clauses` - Clause extraction and evolution
+- `compliance_patterns` - Compliance pattern mining and prediction
+
 ## Development
 
 ```bash
@@ -67,6 +85,7 @@ See `.env.example` for required environment variables.
 - **Service**: Node.js/Express microservice (Port 5003)
 - **Database**: PostgreSQL via Prisma
 - **Storage**: S3/MinIO for document storage
+- **Vector Store**: Milvus (via Cyrex API) for document collections
 - **AI Processing**: Cyrex (Python/FastAPI) for document abstraction
 - **Events**: Redis Streams for event publishing
 
