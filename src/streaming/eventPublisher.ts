@@ -205,6 +205,118 @@ export async function publishDependencyGraphBuilt(
   logger.info(`[Language Intelligence] Published dependency-graph-built: ${contractId}`);
 }
 
+export async function publishObligationCreated(
+  obligationId: string,
+  metadata?: {
+    leaseId?: string;
+    contractId?: string;
+    status?: string;
+    obligationType?: string;
+    owner?: string;
+  }
+): Promise<void> {
+  if (!streamingClient) await initializeEventPublisher();
+
+  const event: StreamEvent = {
+    event: 'obligation-created',
+    timestamp: new Date().toISOString(),
+    source: 'language-intelligence-service',
+    service: 'language-intelligence',
+    action: 'obligation-created',
+    data: { obligationId, ...(metadata || {}) },
+  };
+
+  await streamingClient!.publish(StreamTopics.PLATFORM_EVENTS, event);
+  logger.info(`[Language Intelligence] Published obligation-created: ${obligationId}`);
+}
+
+export async function publishObligationUpdated(
+  obligationId: string,
+  metadata?: {
+    leaseId?: string;
+    contractId?: string;
+    status?: string;
+    obligationType?: string;
+    owner?: string;
+  }
+): Promise<void> {
+  if (!streamingClient) await initializeEventPublisher();
+
+  const event: StreamEvent = {
+    event: 'obligation-updated',
+    timestamp: new Date().toISOString(),
+    source: 'language-intelligence-service',
+    service: 'language-intelligence',
+    action: 'obligation-updated',
+    data: { obligationId, ...(metadata || {}) },
+  };
+
+  await streamingClient!.publish(StreamTopics.PLATFORM_EVENTS, event);
+  logger.info(`[Language Intelligence] Published obligation-updated: ${obligationId}`);
+}
+
+export async function publishObligationDeleted(
+  obligationId: string,
+  metadata?: { leaseId?: string; contractId?: string }
+): Promise<void> {
+  if (!streamingClient) await initializeEventPublisher();
+
+  const event: StreamEvent = {
+    event: 'obligation-deleted',
+    timestamp: new Date().toISOString(),
+    source: 'language-intelligence-service',
+    service: 'language-intelligence',
+    action: 'obligation-deleted',
+    data: { obligationId, ...(metadata || {}) },
+  };
+
+  await streamingClient!.publish(StreamTopics.PLATFORM_EVENTS, event);
+  logger.info(`[Language Intelligence] Published obligation-deleted: ${obligationId}`);
+}
+
+export async function publishDependencyCreated(
+  sourceObligationId: string,
+  targetObligationId: string,
+  metadata?: { dependencyType?: string; confidence?: number }
+): Promise<void> {
+  if (!streamingClient) await initializeEventPublisher();
+
+  const event: StreamEvent = {
+    event: 'obligation-dependency-created',
+    timestamp: new Date().toISOString(),
+    source: 'language-intelligence-service',
+    service: 'language-intelligence',
+    action: 'obligation-dependency-created',
+    data: { sourceObligationId, targetObligationId, ...(metadata || {}) },
+  };
+
+  await streamingClient!.publish(StreamTopics.PLATFORM_EVENTS, event);
+  logger.info(
+    `[Language Intelligence] Published obligation-dependency-created: ${sourceObligationId} -> ${targetObligationId}`
+  );
+}
+
+export async function publishDependencyDeleted(
+  sourceObligationId: string,
+  targetObligationId: string
+): Promise<void> {
+  if (!streamingClient) await initializeEventPublisher();
+
+  const event: StreamEvent = {
+    event: 'obligation-dependency-deleted',
+    timestamp: new Date().toISOString(),
+    source: 'language-intelligence-service',
+    service: 'language-intelligence',
+    action: 'obligation-dependency-deleted',
+    data: { sourceObligationId, targetObligationId },
+  };
+
+  await streamingClient!.publish(StreamTopics.PLATFORM_EVENTS, event);
+  logger.info(
+    `[Language Intelligence] Published obligation-dependency-deleted: ${sourceObligationId} -> ${targetObligationId}`
+  );
+}
+
 export const eventPublisher = {
   publishLeaseCreated,
   publishLeaseProcessed,
@@ -216,5 +328,10 @@ export const eventPublisher = {
   publishContractVersionCreated,
   publishClauseEvolutionTracked,
   publishDependencyGraphBuilt,
+  publishObligationCreated,
+  publishObligationUpdated,
+  publishObligationDeleted,
+  publishDependencyCreated,
+  publishDependencyDeleted,
 };
 
