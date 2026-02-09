@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { validateDatabaseUrl } from '@deepiri/shared-utils';
 
 dotenv.config();
 
@@ -7,7 +8,7 @@ export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
   
   database: {
-    url: process.env.DATABASE_URL || 'postgresql://user:password@localhost:5432/deepiri_language_intelligence',
+    url: validateDatabaseUrl(process.env.DATABASE_URL) || 'postgresql://user:password@localhost:5432/deepiri_language_intelligence',
   },
   
   redis: {
