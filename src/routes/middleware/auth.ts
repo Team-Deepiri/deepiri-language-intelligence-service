@@ -60,10 +60,10 @@ export function extractUserContext(req: Request): boolean {
       organizationId: organizationId,
       role: userRole,
     };
-    logger.debug('User context extracted from headers', { 
-      userId, 
+    logger.debug('User context extracted from headers', {
+      userId,
       organizationId,
-      hasEmail: !!userEmail 
+      hasEmail: !!userEmail
     });
     return true;
   }
@@ -153,5 +153,30 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
     logger.warn('JWT validation failed', { error: error.message });
     res.status(401).json({ error: 'Invalid or expired token' });
   }
+}
+
+/**
+ * Role-based access control middleware
+ */
+export function requireRole(...allowedRoles: string[]) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const role = req.user?.role;
+
+    if (!role) {
+      res.status(401).json({ error: 'Missing authenticated role' });
+      return;
+    }
+
+    if (!allowedRoles.includes(role)) {
+      logger.warn('Insufficient role for request', {
+        role,
+        allowedRoles,
+      });
+      res.status(403).json({ error: 'Insufficient permissions' });
+      return;
+    }
+
+    next();
+  };
 }
 

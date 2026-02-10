@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { body, param, query } from 'express-validator';
-import { authenticate } from './middleware/auth';
+import { authenticate, requireRole } from './middleware/auth';
 import { handleValidationErrors } from './middleware/validation';
 import { obligationService } from '../services/obligationService';
 import { dependencyGraphService } from '../services/dependencyGraphService';
@@ -14,6 +14,7 @@ const router = Router();
 router.get(
     '/',
     authenticate,
+    requireRole('admin', 'moderator', 'developer', 'user'),
     [
         query('leaseId').optional().isUUID(),
         query('contractId').optional().isUUID(),
@@ -50,6 +51,7 @@ router.get(
 router.post(
     '/',
     authenticate,
+    requireRole('admin', 'developer'),
     [
         body('leaseId').optional().isUUID(),
         body('contractId').optional().isUUID(),
@@ -110,6 +112,7 @@ router.post(
 router.get(
     '/:id',
     authenticate,
+    requireRole('admin', 'moderator', 'developer', 'user'),
     [param('id').isUUID()],
     handleValidationErrors,
     async (req: Request, res: Response) => {
@@ -133,6 +136,7 @@ router.get(
 router.get(
     '/:id/dependencies',
     authenticate,
+    requireRole('admin', 'moderator', 'developer', 'user'),
     [param('id').isUUID(), query('maxDepth').optional().isInt({ min: 1, max: 25 })],
     handleValidationErrors,
     async (req: Request, res: Response) => {
@@ -162,6 +166,7 @@ router.get(
 router.get(
     '/:id/dependencies/direct',
     authenticate,
+    requireRole('admin', 'moderator', 'developer', 'user'),
     [
         param('id').isUUID(),
         query('direction').optional().isIn(['source', 'target', 'both']),
@@ -191,6 +196,7 @@ router.get(
 router.post(
     '/:id/dependencies',
     authenticate,
+    requireRole('admin', 'developer'),
     [
         param('id').isUUID(),
         body('targetObligationId').notEmpty().isUUID(),
@@ -241,6 +247,7 @@ router.post(
 router.delete(
     '/:id/dependencies/:targetId',
     authenticate,
+    requireRole('admin', 'developer'),
     [param('id').isUUID(), param('targetId').isUUID()],
     handleValidationErrors,
     async (req: Request, res: Response) => {
@@ -266,6 +273,7 @@ router.delete(
 router.patch(
     '/:id',
     authenticate,
+    requireRole('admin', 'developer'),
     [
         param('id').isUUID(),
         body('leaseId').optional().isUUID(),
@@ -329,6 +337,7 @@ router.patch(
 router.delete(
     '/:id',
     authenticate,
+    requireRole('admin', 'developer'),
     [param('id').isUUID()],
     handleValidationErrors,
     async (req: Request, res: Response) => {
