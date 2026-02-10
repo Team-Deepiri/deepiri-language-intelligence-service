@@ -1,11 +1,24 @@
 import { Request, Response, NextFunction } from 'express';
+import jwt, { JwtPayload } from 'jsonwebtoken';
 import { logger } from '../../utils/logger';
+import { config } from '../../config/environment';
 
 export interface AuthUser {
   id: string;
   email?: string;
   organizationId?: string;
   role?: string;
+}
+
+interface TokenClaims extends JwtPayload {
+  sub?: string;
+  userId?: string;
+  id?: string;
+  email?: string;
+  organizationId?: string;
+  orgId?: string;
+  role?: string;
+  roles?: string[];
 }
 
 declare global {
@@ -32,11 +45,7 @@ declare global {
  * - X-Organization-Id: Organization ID (optional, for multi-tenancy)
  * - X-User-Role: User role (optional)
  */
-export function extractUserContext(
-  req: Request,
-  res: Response,
-  next: NextFunction
-): void {
+export function extractUserContext(req: Request): boolean {
   // Extract user context from headers (set by API Gateway)
   // If headers are present, use them; otherwise, continue without user context
   const userId = req.headers['x-user-id'] as string;
@@ -56,18 +65,93 @@ export function extractUserContext(
       organizationId,
       hasEmail: !!userEmail 
     });
-  } else {
-    // No user context - service can still process documents
-    // This allows internal/background processing without user context
-    logger.debug('No user context in headers - processing without user metadata');
+    return true;
   }
 
-  next();
+  // No user context - service can still process documents
+  // This allows internal/background processing without user context
+  logger.debug('No user context in headers - processing without user metadata');
+
+  return false;
+}
+
+function getBearerToken(req: Request): string | null {
+  const authHeader = req.headers.authorization || req.headers.Authorization;
+  if (!authHeader || typeof authHeader !== 'string') return null;
+
+  const [scheme, token] = authHeader.split(' ');
+  if (scheme?.toLowerCase() !== 'bearer' || !token) return null;
+
+  return token;
+}
+
+function getJwtKey(): string {
+  if (config.auth.jwtPublicKey) {
+    return config.auth.jwtPublicKey.replace(/\\n/g, '\n');
+  }
+
+  if (config.auth.jwtSecret) {
+    return config.auth.jwtSecret;
+  }
+
+  throw new Error('JWT verification key is not configured');
+}
+
+function setUserFromClaims(req: Request, claims: TokenClaims): void {
+  const id = claims.sub || claims.userId || claims.id;
+  if (!id) {
+    throw new Error('JWT missing subject');
+  }
+
+  const role = claims.role || (Array.isArray(claims.roles) ? claims.roles[0] : undefined);
+
+  req.user = {
+    id,
+    email: claims.email,
+    organizationId: claims.organizationId || claims.orgId,
+    role,
+  };
+}
+
+function verifyJwt(token: string): TokenClaims {
+  const key = getJwtKey();
+
+  const options: jwt.VerifyOptions = {};
+  if (config.auth.jwtIssuer) options.issuer = config.auth.jwtIssuer;
+  if (config.auth.jwtAudience) options.audience = config.auth.jwtAudience;
+
+  return jwt.verify(token, key, options) as TokenClaims;
 }
 
 /**
- * Authenticate middleware - extracts user context from headers
- * No API key required for direct access - security via network isolation
+ * Authenticate middleware - validates JWT and sets req.user
+ * Falls back to gateway headers only when explicitly allowed
  */
-export const authenticate = extractUserContext;
+export function authenticate(req: Request, res: Response, next: NextFunction): void {
+  if (!config.auth.enabled) {
+    extractUserContext(req);
+    next();
+    return;
+  }
+
+  const token = getBearerToken(req);
+  if (!token) {
+    if (config.auth.allowGatewayHeaders && extractUserContext(req)) {
+      next();
+      return;
+    }
+
+    res.status(401).json({ error: 'Missing authorization token' });
+    return;
+  }
+
+  try {
+    const claims = verifyJwt(token);
+    setUserFromClaims(req, claims);
+    next();
+  } catch (error: any) {
+    logger.warn('JWT validation failed', { error: error.message });
+    res.status(401).json({ error: 'Invalid or expired token' });
+  }
+}
 
