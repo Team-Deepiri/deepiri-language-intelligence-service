@@ -4,11 +4,13 @@
 generator client {
   provider        = "prisma-client-js"
   binaryTargets   = ["native"]
+  previewFeatures = ["multiSchema"]
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  schemas  = ["intelligence"]
 }
 
 // ============================================
@@ -77,6 +79,7 @@ model Lease {
   @@index([organizationId])
   @@index([startDate])
   @@map("leases")
+  @@schema("intelligence")
 }
 
 model LeaseVersion {
@@ -109,6 +112,7 @@ model LeaseVersion {
   @@index([leaseId])
   @@index([versionNumber])
   @@map("lease_versions")
+  @@schema("intelligence")
 }
 
 // ============================================
@@ -129,12 +133,12 @@ model Contract {
   // Document storage
   documentUrl       String        @map("document_url") @db.Text
   documentStorageKey String?       @map("document_storage_key") @db.VarChar(255)
-  rawText           String?       @map("raw_text") @db.Text
+  rawText           String       @map("raw_text") @db.Text
   documentType      String        @default("PDF") @map("document_type") @db.VarChar(50)
   fileSize          Int?          @map("file_size")
   
   // Processing status
-  status            ContractStatus @default(PENDING)
+  status            String @default("PENDING") @db.VarChar(50)
   processingStatus  String?       @map("processing_status") @db.VarChar(50)
   processingError   String?       @map("processing_error") @db.Text
   processedAt       DateTime?     @map("processed_at") @db.Timestamp
@@ -179,6 +183,7 @@ model Contract {
   @@index([organizationId])
   @@index([effectiveDate])
   @@map("contracts")
+  @@schema("intelligence")
 }
 
 model Clause {
@@ -216,6 +221,7 @@ model Clause {
   @@index([versionNumber])
   @@index([changeType])
   @@map("clauses")
+  @@schema("intelligence")
 }
 
 model ContractVersion {
@@ -248,6 +254,7 @@ model ContractVersion {
   @@index([contractId])
   @@index([versionNumber])
   @@map("contract_versions")
+  @@schema("intelligence")
 }
 
 // ============================================
@@ -306,6 +313,7 @@ model Obligation {
   @@index([deadline])
   @@index([obligationType])
   @@map("obligations")
+  @@schema("intelligence")
 }
 
 model ObligationDependency {
@@ -350,6 +358,7 @@ model ObligationDependency {
   @@index([dependencyType])
   @@index([verified])
   @@map("obligation_dependencies")
+  @@schema("intelligence")
 }
 
 // ============================================
@@ -362,6 +371,7 @@ enum LeaseStatus {
   COMPLETED
   ERROR
   ARCHIVED
+  @@schema("intelligence")
 }
 
 enum ContractStatus {
@@ -370,6 +380,7 @@ enum ContractStatus {
   COMPLETED
   ERROR
   ARCHIVED
+  @@schema("intelligence")
 }
 
 enum ObligationType {
@@ -388,6 +399,7 @@ enum ObligationType {
   PERFORMANCE
   CONFIDENTIALITY
   OTHER
+  @@schema("intelligence")
 }
 
 enum ObligationStatus {
@@ -396,6 +408,7 @@ enum ObligationStatus {
   COMPLETED
   OVERDUE
   CANCELLED
+  @@schema("intelligence")
 }
 
 enum DependencyType {
@@ -405,6 +418,7 @@ enum DependencyType {
   REQUIRES      // Source obligation requires target
   PRECEDES      // Source obligation must occur before target
   CONFLICTS     // Source obligation conflicts with target
+  @@schema("intelligence")
 }
 
 // ============================================
@@ -425,6 +439,7 @@ enum JobStatus {
   COMPLETED
   FAILED
   CANCELLED
+  @@schema("intelligence")
 }
 
 enum AnalysisType {
@@ -434,6 +449,7 @@ enum AnalysisType {
   CLASSIFICATION
   RAG
   OTHER
+  @@schema("intelligence")
 }
 
 model Document {
@@ -454,6 +470,7 @@ model Document {
   @@index([userId, createdAt])
   @@index([userId])
   @@map("documents")
+  @@schema("intelligence")
 }
 
 model DocumentChunk {
@@ -478,6 +495,7 @@ model DocumentChunk {
   @@index([documentId])
   @@index([userId])
   @@map("document_chunks")
+  @@schema("intelligence")
 }
 
 model AnalysisJob {
@@ -504,6 +522,7 @@ model AnalysisJob {
   @@index([documentId])
   @@index([chunkId])
   @@map("analysis_jobs")
+  @@schema("intelligence")
 }
 
 model AnalysisResult {
@@ -520,6 +539,7 @@ model AnalysisResult {
 
   @@index([userId])
   @@map("analysis_results")
+  @@schema("intelligence")
 }
 
 model Embedding {
@@ -542,6 +562,7 @@ model Embedding {
   @@index([userId, createdAt])
   @@index([chunkId])
   @@map("embeddings")
+  @@schema("intelligence")
 }
 
 model PromptTemplate {
@@ -557,6 +578,7 @@ model PromptTemplate {
   @@unique([userId, name, version])
   @@index([userId])
   @@map("prompt_templates")
+  @@schema("intelligence")
 }
 
 
