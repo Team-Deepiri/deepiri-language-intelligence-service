@@ -1,12 +1,12 @@
 import { Router, Request, Response } from 'express';
-import { body, param, query, validationResult } from 'express-validator';
+import { body, param, query } from 'express-validator';
 import multer from 'multer';
 import { contractIntelligenceService } from '../services/contractIntelligenceService';
 import { obligationService } from '../services/obligationService';
 import { documentService } from '../services/documentService';
 import { cyrexClient } from '../services/cyrexClient';
 import { authenticate } from './middleware/auth';
-import { handleValidationErrors } from './middleware/validation';
+import { validate, commonValidations } from '../middleware/inputValidation';
 import { logger } from '../utils/logger';
 
 const router = Router();
@@ -19,14 +19,17 @@ router.post(
   '/upload',
   authenticate,
   upload.single('file'),
-  [
-    body('contractNumber').notEmpty(),
-    body('contractName').notEmpty(),
-    body('partyA').notEmpty(),
-    body('partyB').notEmpty(),
+  validate([
+    commonValidations.string('contractNumber', 100),
+    commonValidations.string('contractName', 255),
+    commonValidations.string('partyA', 255),
+    commonValidations.string('partyB', 255),
     body('effectiveDate').isISO8601(),
-  ],
-  handleValidationErrors,
+    commonValidations.string('contractType', 100).optional(),
+    commonValidations.string('jurisdiction', 100).optional(),
+    commonValidations.string('notes', 1000).optional(),
+    commonValidations.array('tags', 50).optional(),
+  ]),
   async (req: Request, res: Response) => {
     try {
       const file = req.file;
@@ -74,8 +77,9 @@ router.post(
 router.get(
   '/:id',
   authenticate,
-  [param('id').isUUID()],
-  handleValidationErrors,
+  validate([
+    param('id').isUUID().withMessage('Invalid contract ID format')
+  ]),
   async (req: Request, res: Response) => {
     try {
       const contract = await contractIntelligenceService.getContractById(req.params.id);
@@ -96,8 +100,10 @@ router.get(
 router.get(
   '/:id/clauses',
   authenticate,
-  [param('id').isUUID()],
-  handleValidationErrors,
+  validate([
+    param('id').isUUID().withMessage('Invalid contract ID format'),
+    query('version').optional().isInt({ min: 1 }).withMessage('Version must be a positive integer')
+  ]),
   async (req: Request, res: Response) => {
     try {
       const versionNumber = req.query.version 
@@ -122,8 +128,11 @@ router.get(
 router.get(
   '/:id/clauses/evolution',
   authenticate,
-  [param('id').isUUID()],
-  handleValidationErrors,
+  validate([
+    param('id').isUUID().withMessage('Invalid contract ID format'),
+    query('fromVersion').optional().isInt({ min: 1 }).withMessage('fromVersion must be a positive integer'),
+    query('toVersion').optional().isInt({ min: 1 }).withMessage('toVersion must be a positive integer')
+  ]),
   async (req: Request, res: Response) => {
     try {
       const fromVersion = req.query.fromVersion 
@@ -178,8 +187,9 @@ router.get(
 router.get(
   '/:id/obligations/dependencies',
   authenticate,
-  [param('id').isUUID()],
-  handleValidationErrors,
+  validate([
+  param('id').isUUID().withMessage('Invalid contract ID format')
+]),
   async (req: Request, res: Response) => {
     try {
       const contractId = req.params.id;
@@ -215,8 +225,10 @@ router.get(
 router.get(
   '/obligations/:id/cascade',
   authenticate,
-  [param('id').isUUID()],
-  handleValidationErrors,
+  validate([
+    param('id').isUUID().withMessage('Invalid obligation ID format'),
+    query('maxDepth').optional().isInt({ min: 1, max: 10 }).withMessage('maxDepth must be between 1 and 10')
+  ]),
   async (req: Request, res: Response) => {
     try {
       const obligationId = req.params.id;
@@ -247,8 +259,10 @@ router.post(
   '/:id/versions',
   authenticate,
   upload.single('file'),
-  [param('id').isUUID()],
-  handleValidationErrors,
+  validate([
+    param('id').isUUID().withMessage('Invalid contract ID format'),
+    body('versionNumber').optional().isInt({ min: 1 }).withMessage('versionNumber must be a positive integer')
+  ]),
   async (req: Request, res: Response) => {
     try {
       const file = req.file;
@@ -279,12 +293,11 @@ router.post(
 router.get(
   '/:id/versions/:versionId/diff',
   authenticate,
-  [
-    param('id').isUUID(),
-    param('versionId').isUUID(),
-    query('compareTo').optional().isInt(),
-  ],
-  handleValidationErrors,
+  validate([
+    param('id').isUUID().withMessage('Invalid contract ID format'),
+    param('versionId').isUUID().withMessage('Invalid version ID format'),
+    query('compareTo').optional().isInt({ min: 1 }).withMessage('compareTo must be a positive integer')
+  ]),
   async (req: Request, res: Response) => {
     try {
       const diff = await contractIntelligenceService.compareVersions(
@@ -307,6 +320,11 @@ router.get(
 router.get(
   '/',
   authenticate,
+  validate([
+  query('status').optional().isIn(['active', 'inactive', 'draft', 'archived']).withMessage('Invalid status'),
+  query('contractType').optional().isLength({ max: 100 }).withMessage('contractType must be less than 100 characters')
+]),
+
   async (req: Request, res: Response) => {
     try {
       const contracts = await contractIntelligenceService.listContracts({

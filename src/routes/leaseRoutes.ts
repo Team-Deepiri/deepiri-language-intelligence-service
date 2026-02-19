@@ -1,11 +1,11 @@
 import { Router, Request, Response } from 'express';
-import { body, param, query, validationResult } from 'express-validator';
+import { body, param, query } from 'express-validator';
 import multer from 'multer';
 import { leaseAbstractionService } from '../services/leaseAbstractionService';
 import { obligationService } from '../services/obligationService';
 import { documentService } from '../services/documentService';
 import { authenticate } from './middleware/auth';
-import { handleValidationErrors } from './middleware/validation';
+import { validate, commonValidations } from '../middleware/inputValidation';
 import { logger } from '../utils/logger';
 
 const router = Router();
@@ -18,14 +18,18 @@ router.post(
   '/upload',
   authenticate,
   upload.single('file'),
-  [
-    body('leaseNumber').notEmpty(),
-    body('tenantName').notEmpty(),
-    body('propertyAddress').notEmpty(),
+  validate([
+    commonValidations.string('leaseNumber', 100),
+    commonValidations.string('tenantName', 255),
+    commonValidations.string('landlordName', 255).optional(),
+    commonValidations.string('propertyAddress', 500),
+    commonValidations.string('propertyType', 100).optional(),
+    body('squareFootage').optional().isInt({ min: 1, max: 1000000 }).withMessage('squareFootage must be between 1 and 1,000,000'),
     body('startDate').isISO8601(),
     body('endDate').isISO8601(),
-  ],
-  handleValidationErrors,
+    commonValidations.string('notes', 1000).optional(),
+    commonValidations.array('tags', 50).optional(),
+  ]),
   async (req: Request, res: Response) => {
     try {
       const file = req.file;
@@ -73,8 +77,9 @@ router.post(
 router.get(
   '/:id',
   authenticate,
-  [param('id').isUUID()],
-  handleValidationErrors,
+  validate([
+    param('id').isUUID().withMessage('Invalid lease ID format')
+  ]),
   async (req: Request, res: Response) => {
     try {
       const lease = await leaseAbstractionService.getLeaseById(req.params.id);
@@ -95,8 +100,9 @@ router.get(
 router.get(
   '/:id/obligations',
   authenticate,
-  [param('id').isUUID()],
-  handleValidationErrors,
+  validate([
+    param('id').isUUID().withMessage('Invalid lease ID format')
+  ]),
   async (req: Request, res: Response) => {
     try {
       const obligations = await obligationService.getObligationsByLeaseId(req.params.id);
@@ -114,8 +120,10 @@ router.post(
   '/:id/versions',
   authenticate,
   upload.single('file'),
-  [param('id').isUUID()],
-  handleValidationErrors,
+  validate([
+    param('id').isUUID().withMessage('Invalid lease ID format'),
+    body('versionNumber').optional().isInt({ min: 1 }).withMessage('versionNumber must be a positive integer')
+  ]),
   async (req: Request, res: Response) => {
     try {
       const file = req.file;
@@ -146,12 +154,11 @@ router.post(
 router.get(
   '/:id/versions/:versionId/diff',
   authenticate,
-  [
-    param('id').isUUID(),
-    param('versionId').isUUID(),
-    query('compareTo').optional().isInt(),
-  ],
-  handleValidationErrors,
+  validate([
+    param('id').isUUID().withMessage('Invalid lease ID format'),
+    param('versionId').isUUID().withMessage('Invalid version ID format'),
+    query('compareTo').optional().isInt({ min: 1 }).withMessage('compareTo must be a positive integer')
+  ]),
   async (req: Request, res: Response) => {
     try {
       const diff = await leaseAbstractionService.compareVersions(
@@ -174,6 +181,10 @@ router.get(
 router.get(
   '/',
   authenticate,
+  validate([
+    query('status').optional().isIn(['active', 'inactive', 'draft', 'expired', 'terminated']).withMessage('Invalid status'),
+    query('tenantName').optional().isLength({ max: 255 }).withMessage('tenantName must be less than 255 characters')
+  ]),
   async (req: Request, res: Response) => {
     try {
       const leases = await leaseAbstractionService.listLeases({
