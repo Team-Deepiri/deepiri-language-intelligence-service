@@ -1,10 +1,10 @@
 import { Router, Request, Response } from 'express';
-import { param, body, query, validationResult } from 'express-validator';
+import { param, body, query } from 'express-validator';
 import axios from 'axios';
 import { config } from '../config/environment';
 import { secureLog } from '@deepiri/shared-utils';
 import { authenticate } from './middleware/auth';
-import { handleValidationErrors } from './middleware/validation';
+import { validate, commonValidations } from '../middleware/inputValidation';
 
 const router = Router();
 
@@ -52,27 +52,37 @@ const cyrexClient = axios.create({
  * GET /api/v1/vector-store/collections/types
  * Get all available collection types
  */
-router.get('/collections/types', authenticate, (req: Request, res: Response) => {
-  res.json({
-    collection_types: Object.values(CollectionType),
-    collections: COLLECTION_NAMES,
-    description: 'Available collections for Regulatory Contract Lease Language Intelligence Platform',
-  });
-});
+router.get(
+  '/collections/types',
+  authenticate,
+  validate([]),
+  (req: Request, res: Response) => {
+    res.json({
+      collection_types: Object.values(CollectionType),
+      collections: COLLECTION_NAMES,
+      description: 'Available collections for Regulatory Contract Lease Language Intelligence Platform',
+    });
+  }
+);
 
 /**
  * GET /api/v1/vector-store/collections
  * List all collections
  */
-router.get('/collections', authenticate, async (req: Request, res: Response) => {
-  try {
-    const response = await cyrexClient.get('/api/v1/documents/collections');
-    res.json(response.data);
-  } catch (error: any) {
-    secureLog('error', 'List collections error:', error);
-    res.status(500).json({ error: 'Failed to list collections', details: error.message });
+router.get(
+  '/collections',
+  authenticate,
+  validate([]),
+  async (req: Request, res: Response) => {
+    try {
+      const response = await cyrexClient.get('/api/v1/documents/collections');
+      res.json(response.data);
+    } catch (error: any) {
+      logger.error('List collections error:', error);
+      res.status(500).json({ error: 'Failed to list collections', details: error.message });
+    }
   }
-});
+);
 
 /**
  * GET /api/v1/vector-store/collections/:collectionName/stats
@@ -81,8 +91,7 @@ router.get('/collections', authenticate, async (req: Request, res: Response) => 
 router.get(
   '/collections/:collectionName/stats',
   authenticate,
-  [param('collectionName').notEmpty().isString()],
-  handleValidationErrors,
+  validate([param('collectionName').notEmpty().isString()]),
   async (req: Request, res: Response) => {
     try {
       const { collectionName } = req.params;
@@ -104,8 +113,7 @@ router.get(
 router.post(
   '/collections/:collectionName',
   authenticate,
-  [param('collectionName').notEmpty().isString()],
-  handleValidationErrors,
+  validate([param('collectionName').notEmpty().isString()]),
   async (req: Request, res: Response) => {
     try {
       const { collectionName } = req.params;
@@ -133,14 +141,13 @@ router.post(
 router.post(
   '/collections/:collectionName/documents',
   authenticate,
-  [
+  validate([
     param('collectionName').notEmpty().isString(),
     body('documents').isArray().notEmpty(),
     body('documents.*.content').optional().isString(),
     body('documents.*.text').optional().isString(),
     body('metadata').optional().isObject(),
-  ],
-  handleValidationErrors,
+  ]),
   async (req: Request, res: Response) => {
     try {
       const { collectionName } = req.params;
@@ -192,12 +199,11 @@ router.post(
 router.delete(
   '/collections/:collectionName/documents',
   authenticate,
-  [
+  validate([
     param('collectionName').notEmpty().isString(),
     body('document_ids').isArray().notEmpty(),
     body('document_ids.*').isString(),
-  ],
-  handleValidationErrors,
+  ]),
   async (req: Request, res: Response) => {
     try {
       const { collectionName } = req.params;
@@ -226,13 +232,12 @@ router.delete(
 router.get(
   '/collections/:collectionName/documents',
   authenticate,
-  [
+  validate([
     param('collectionName').notEmpty().isString(),
     query('query').optional().isString(),
     query('limit').optional().isInt({ min: 1, max: 100 }),
     query('offset').optional().isInt({ min: 0 }),
-  ],
-  handleValidationErrors,
+  ]),
   async (req: Request, res: Response) => {
     try {
       const { collectionName } = req.params;
@@ -275,13 +280,12 @@ router.get(
 router.post(
   '/collections/:collectionName/documents/search',
   authenticate,
-  [
+  validate([
     param('collectionName').notEmpty().isString(),
     body('query').notEmpty().isString(),
     body('top_k').optional().isInt({ min: 1, max: 100 }),
     body('metadata_filters').optional().isObject(),
-  ],
-  handleValidationErrors,
+  ]),
   async (req: Request, res: Response) => {
     try {
       const { collectionName } = req.params;
