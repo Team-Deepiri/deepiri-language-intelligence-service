@@ -78,7 +78,7 @@ router.get(
       const response = await cyrexClient.get('/api/v1/documents/collections');
       res.json(response.data);
     } catch (error: any) {
-      logger.error('List collections error:', error);
+      secureLog('error', 'List collections error:', error);
       res.status(500).json({ error: 'Failed to list collections', details: error.message });
     }
   }
@@ -315,4 +315,5 @@ router.post(
 );
 
 export default router;
+
 
