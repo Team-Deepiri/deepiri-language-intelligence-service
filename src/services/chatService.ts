@@ -24,7 +24,6 @@ export class ChatService {
    * Create a new chat session
    */
   async createChatSession(input: CreateChatSessionInput): Promise<ChatSession> {
-    // @ts-expect-error - Prisma types will exist after migration runs
     const session = await prisma.chatSession.create({
       data: {
         userId: input.userId,
@@ -42,7 +41,6 @@ export class ChatService {
    * Get chat session by ID with messages
    */
   async getChatSession(sessionId: string, userId: string): Promise<ChatSessionWithMessages | null> {
-    // @ts-expect-error - Prisma types will exist after migration runs
     const session = await prisma.chatSession.findFirst({
       where: {
         id: sessionId,
@@ -77,7 +75,6 @@ export class ChatService {
     if (contextId) where.contextId = contextId;
     if (contextType) where.contextType = contextType;
 
-    // @ts-expect-error - Prisma types will exist after migration runs
     const sessions = await prisma.chatSession.findMany({
       where,
       orderBy: {
@@ -94,7 +91,6 @@ export class ChatService {
    */
   async addMessage(input: CreateMessageInput): Promise<Message> {
     // Verify session exists
-    // @ts-expect-error - Prisma types will exist after migration runs
     const sessionExists = await prisma.chatSession.findUnique({
       where: { id: input.chatSessionId },
     });
@@ -103,7 +99,6 @@ export class ChatService {
       throw new Error('Chat session not found');
     }
 
-    // @ts-expect-error - Prisma types will exist after migration runs
     const message = await prisma.message.create({
       data: {
         chatSessionId: input.chatSessionId,
@@ -112,8 +107,6 @@ export class ChatService {
       },
     });
 
-    // Update session timestamp
-    // @ts-expect-error - Prisma types will exist after migration runs
     await prisma.chatSession.update({
       where: { id: input.chatSessionId },
       data: { updatedAt: new Date() },
@@ -124,10 +117,9 @@ export class ChatService {
   }
 
   /**
-   * Delete a chat session
+   * Delete chat session
    */
   async deleteChatSession(sessionId: string, userId: string): Promise<boolean> {
-    // @ts-expect-error - Prisma types will exist after migration runs
     const result = await prisma.chatSession.deleteMany({
       where: {
         id: sessionId,
@@ -148,7 +140,6 @@ export class ChatService {
    * Update chat session title
    */
   async updateChatSessionTitle(sessionId: string, userId: string, title: string): Promise<ChatSession | null> {
-    // @ts-expect-error - Prisma types will exist after migration runs
     const updated = await prisma.chatSession.updateMany({
       where: {
         id: sessionId,
@@ -164,7 +155,6 @@ export class ChatService {
       return null;
     }
 
-    // @ts-expect-error - Prisma types will exist after migration runs
     const session = await prisma.chatSession.findUnique({
       where: { id: sessionId },
     });
