@@ -1,6 +1,6 @@
 import { StreamingClient, StreamTopics, StreamEvent } from '@deepiri/shared-utils';
 import { config } from '../config/environment';
-import { logger } from '../utils/logger';
+import { secureLog } from '@deepiri/shared-utils';
 
 let streamingClient: StreamingClient | null = null;
 
@@ -12,9 +12,9 @@ export async function initializeEventPublisher(): Promise<void> {
       config.redis.password
     );
     await streamingClient.connect();
-    logger.info('[Language Intelligence] Connected to Redis Streams');
+    secureLog('info', '[Language Intelligence] Connected to Redis Streams');
   } catch (error: any) {
-    logger.error('[Language Intelligence] Failed to initialize event publisher:', error);
+    secureLog('error', '[Language Intelligence] Failed to initialize event publisher:', error);
     throw error;
   }
 }
@@ -32,7 +32,7 @@ export async function publishLeaseCreated(leaseId: string, leaseNumber: string):
   };
 
   await streamingClient!.publish(StreamTopics.PLATFORM_EVENTS, event);
-  logger.info(`[Language Intelligence] Published lease-created: ${leaseId}`);
+  secureLog('info', `[Language Intelligence] Published lease-created: ${leaseId}`);
 }
 
 export async function publishLeaseProcessed(
@@ -51,7 +51,7 @@ export async function publishLeaseProcessed(
   };
 
   await streamingClient!.publish(StreamTopics.PLATFORM_EVENTS, event);
-  logger.info(`[Language Intelligence] Published lease-processed: ${leaseId}`);
+  secureLog('info', `[Language Intelligence] Published lease-processed: ${leaseId}`);
 }
 
 export async function publishLeaseProcessingError(
@@ -70,7 +70,7 @@ export async function publishLeaseProcessingError(
   };
 
   await streamingClient!.publish(StreamTopics.PLATFORM_EVENTS, event);
-  logger.error(`[Language Intelligence] Published lease-processing-error: ${leaseId}`);
+  secureLog('error', `[Language Intelligence] Published lease-processing-error: ${leaseId}`);
 }
 
 export async function publishLeaseVersionCreated(
@@ -90,7 +90,7 @@ export async function publishLeaseVersionCreated(
   };
 
   await streamingClient!.publish(StreamTopics.PLATFORM_EVENTS, event);
-  logger.info(`[Language Intelligence] Published lease-version-created: ${versionId}`);
+  secureLog('info', `[Language Intelligence] Published lease-version-created: ${versionId}`);
 }
 
 export async function publishContractCreated(contractId: string, contractNumber: string): Promise<void> {
@@ -106,7 +106,7 @@ export async function publishContractCreated(contractId: string, contractNumber:
   };
 
   await streamingClient!.publish(StreamTopics.PLATFORM_EVENTS, event);
-  logger.info(`[Language Intelligence] Published contract-created: ${contractId}`);
+  secureLog('info', `[Language Intelligence] Published contract-created: ${contractId}`);
 }
 
 export async function publishContractProcessed(
@@ -125,7 +125,7 @@ export async function publishContractProcessed(
   };
 
   await streamingClient!.publish(StreamTopics.PLATFORM_EVENTS, event);
-  logger.info(`[Language Intelligence] Published contract-processed: ${contractId}`);
+  secureLog('info', `[Language Intelligence] Published contract-processed: ${contractId}`);
 }
 
 export async function publishContractProcessingError(
@@ -144,7 +144,7 @@ export async function publishContractProcessingError(
   };
 
   await streamingClient!.publish(StreamTopics.PLATFORM_EVENTS, event);
-  logger.error(`[Language Intelligence] Published contract-processing-error: ${contractId}`);
+  secureLog('error', `[Language Intelligence] Published contract-processing-error: ${contractId}`);
 }
 
 export async function publishContractVersionCreated(
@@ -164,7 +164,7 @@ export async function publishContractVersionCreated(
   };
 
   await streamingClient!.publish(StreamTopics.PLATFORM_EVENTS, event);
-  logger.info(`[Language Intelligence] Published contract-version-created: ${versionId}`);
+  secureLog('info', `[Language Intelligence] Published contract-version-created: ${versionId}`);
 }
 
 export async function publishClauseEvolutionTracked(
@@ -183,7 +183,7 @@ export async function publishClauseEvolutionTracked(
   };
 
   await streamingClient!.publish(StreamTopics.PLATFORM_EVENTS, event);
-  logger.info(`[Language Intelligence] Published clause-evolution-tracked: ${contractId}`);
+  secureLog('info', `[Language Intelligence] Published clause-evolution-tracked: ${contractId}`);
 }
 
 export async function publishDependencyGraphBuilt(
@@ -202,7 +202,7 @@ export async function publishDependencyGraphBuilt(
   };
 
   await streamingClient!.publish(StreamTopics.PLATFORM_EVENTS, event);
-  logger.info(`[Language Intelligence] Published dependency-graph-built: ${contractId}`);
+  secureLog('info', `[Language Intelligence] Published dependency-graph-built: ${contractId}`);
 }
 
 export const eventPublisher = {

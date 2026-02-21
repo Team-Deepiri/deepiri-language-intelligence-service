@@ -4,7 +4,7 @@ import { documentService } from './documentService';
 import { obligationService } from './obligationService';
 import { clauseEvolutionService } from './clauseEvolutionService';
 import { eventPublisher } from '../streaming/eventPublisher';
-import { logger } from '../utils/logger';
+import { secureLog } from '@deepiri/shared-utils';
 import type { Contract, Clause, ContractVersion, Prisma } from '@prisma/client';
 
 export interface CreateContractInput {
@@ -47,7 +47,7 @@ export class ContractIntelligenceService {
       },
     });
     
-    logger.info('Contract created', { contractId: contract.id, contractNumber: contract.contractNumber });
+    secureLog('info', 'Contract created', { contractId: contract.id, contractNumber: contract.contractNumber });
     await eventPublisher.publishContractCreated(contract.id, contract.contractNumber);
     
     return contract;
@@ -234,7 +234,7 @@ export class ContractIntelligenceService {
         });
       } catch (error: any) {
         // Dependency might already exist, skip
-        logger.warn('Failed to create dependency (may already exist)', {
+        secureLog('warn', 'Failed to create dependency (may already exist)', {
           error: error.message,
           source: dep.source_obligation_id,
           target: dep.target_obligation_id,
@@ -282,7 +282,7 @@ export class ContractIntelligenceService {
       try {
         await this.processContract(contractId);
       } catch (error: any) {
-        logger.error('Error in async contract processing', { contractId, error: error.message });
+        secureLog('error', 'Error in async contract processing', { contractId, error: error.message });
       }
     });
   }
