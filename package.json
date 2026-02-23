@@ -12,8 +12,7 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:db:push": "prisma db push",
     "prisma:baseline": "bash scripts/baseline-migration.sh",
-    "prisma:studio": "prisma studio"
-    ,
+    "prisma:studio": "prisma studio",
     "smoke:test": "node scripts/smoke-test.js"
   },
   "keywords": [
@@ -28,7 +27,7 @@
     "@aws-sdk/client-s3": "^3.490.0",
     "@aws-sdk/lib-storage": "^3.490.0",
     "@deepiri/shared-utils": "file:../shared/deepiri-shared-utils",
-    "@prisma/client": "^5.7.0",
+    "@prisma/client": "^6.19.2",
     "axios": "^1.6.2",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
@@ -51,9 +50,8 @@
     "@types/uuid": "^9.0.7",
     "@typescript-eslint/eslint-plugin": "^6.15.0",
     "@typescript-eslint/parser": "^6.15.0",
-    "prisma": "^5.7.0",
+    "prisma": "^6.19.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.3.3"
   }
 }
-
