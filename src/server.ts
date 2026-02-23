@@ -1,14 +1,16 @@
-import express, { Express, Request, Response, ErrorRequestHandler } from 'express';
+import express, { Express, Request, Response, ErrorRequestHandler, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import winston from 'winston';
 import multer from 'multer';
+import { v4 as uuidv4 } from 'uuid';
 import routes from './routes';
 import { connectDatabase, prisma } from './db';
 import { initializeEventPublisher } from './streaming/eventPublisher';
-import { logger } from './utils/logger';
+import { secureLog } from '@deepiri/shared-utils';
 import { config } from './config/environment';
+import { validateBodyIfPresent } from './middleware/inputValidation';
 
 dotenv.config();
 
@@ -36,6 +38,7 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(validateBodyIfPresent());
 
 // File upload configuration
 const upload = multer({
@@ -49,16 +52,24 @@ app.use((req: Request, res: Response, next) => {
   next();
 });
 
+// Add request ID middleware for correlation tracking and validation logging
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const requestId = req.headers['x-request-id'] as string || uuidv4();
+  (req as any).requestId = requestId;
+  res.setHeader('x-request-id', requestId);
+  next();
+});
+
 // Database connection
 connectDatabase()
   .catch((err: Error) => {
-    logger.error('Language Intelligence Service: Failed to connect to PostgreSQL', err);
+    secureLog('error', 'Language Intelligence Service: Failed to connect to PostgreSQL', err);
     process.exit(1);
   });
 
 // Initialize event publisher
 initializeEventPublisher().catch((err) => {
-  logger.error('Failed to initialize event publisher:', err);
+  secureLog('error', 'Failed to initialize event publisher:', err);
 });
 
 // Health check
@@ -82,7 +93,7 @@ app.get('/health', async (req: Request, res: Response) => {
       });
     }
   } catch (error: any) {
-    logger.error('Health check failed:', error);
+    secureLog('error', 'Health check failed:', error);
     res.status(503).json({ 
       status: 'unhealthy', 
       service: 'language-intelligence-service',
@@ -98,7 +109,7 @@ app.use('/api/v1', routes);
 
 // Error handler
 const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
-  logger.error('Language Intelligence Service error:', err);
+  secureLog('error', 'Language Intelligence Service error:', err);
   res.status(500).json({ 
     error: 'Internal server error',
     message: process.env.NODE_ENV === 'development' ? err.message : undefined

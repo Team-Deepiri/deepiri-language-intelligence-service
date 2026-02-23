@@ -4,13 +4,11 @@
 generator client {
   provider        = "prisma-client-js"
   binaryTargets   = ["native"]
-  previewFeatures = ["multiSchema"]
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["intelligence", "public"]
 }
 
 // ============================================
@@ -78,7 +76,6 @@ model Lease {
   @@index([userId])
   @@index([organizationId])
   @@index([startDate])
-  @@schema("intelligence")
   @@map("leases")
 }
 
@@ -111,7 +108,6 @@ model LeaseVersion {
   @@unique([leaseId, versionNumber])
   @@index([leaseId])
   @@index([versionNumber])
-  @@schema("intelligence")
   @@map("lease_versions")
 }
 
@@ -182,7 +178,6 @@ model Contract {
   @@index([userId])
   @@index([organizationId])
   @@index([effectiveDate])
-  @@schema("intelligence")
   @@map("contracts")
 }
 
@@ -220,7 +215,6 @@ model Clause {
   @@index([clauseType])
   @@index([versionNumber])
   @@index([changeType])
-  @@schema("intelligence")
   @@map("clauses")
 }
 
@@ -253,7 +247,6 @@ model ContractVersion {
   @@unique([contractId, versionNumber])
   @@index([contractId])
   @@index([versionNumber])
-  @@schema("intelligence")
   @@map("contract_versions")
 }
 
@@ -312,7 +305,6 @@ model Obligation {
   @@index([status])
   @@index([deadline])
   @@index([obligationType])
-  @@schema("intelligence")
   @@map("obligations")
 }
 
@@ -357,7 +349,6 @@ model ObligationDependency {
   @@index([targetContractId])
   @@index([dependencyType])
   @@index([verified])
-  @@schema("intelligence")
   @@map("obligation_dependencies")
 }
 
@@ -371,8 +362,6 @@ enum LeaseStatus {
   COMPLETED
   ERROR
   ARCHIVED
-
-  @@schema("intelligence")
 }
 
 enum ContractStatus {
@@ -381,8 +370,6 @@ enum ContractStatus {
   COMPLETED
   ERROR
   ARCHIVED
-
-  @@schema("intelligence")
 }
 
 enum ObligationType {
@@ -401,8 +388,6 @@ enum ObligationType {
   PERFORMANCE
   CONFIDENTIALITY
   OTHER
-
-  @@schema("intelligence")
 }
 
 enum ObligationStatus {
@@ -411,8 +396,6 @@ enum ObligationStatus {
   COMPLETED
   OVERDUE
   CANCELLED
-
-  @@schema("intelligence")
 }
 
 enum DependencyType {
@@ -422,7 +405,158 @@ enum DependencyType {
   REQUIRES      // Source obligation requires target
   PRECEDES      // Source obligation must occur before target
   CONFLICTS     // Source obligation conflicts with target
-
-  @@schema("intelligence")
 }
+
+// ============================================
+// LANGUAGE INTELLIGENCE MODELS (DOCUMENTS, RAG, EMBEDDINGS, PROMPTS)
+// Notes:
+// - Preferred vector column uses the pgvector extension. Enable it in Postgres with:
+//     CREATE EXTENSION IF NOT EXISTS vector;
+// - The field below uses Prisma's Unsupported("vector") type to map to the PG `vector` type.
+//   If you cannot enable the extension, remove or comment the `vector` field and use
+//   the provided fallback `vector_fallback Float[] @db.Float8[]` instead.
+// - Indexing for pgvector (ivfflat / cosine / l2) must be created manually in migrations
+//   using a raw SQL migration after enabling the extension. Keep the vector field optional
+//   so smoke-tests and initial migrations work without forcing pgvector availability.
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum AnalysisType {
+  EMBEDDING
+  EXTRACTION
+  SUMMARIZATION
+  CLASSIFICATION
+  RAG
+  OTHER
+}
+
+model Document {
+  id           String           @id @default(uuid()) @db.Uuid
+  userId       String           @db.Uuid
+  title        String?          @db.VarChar(500)
+  sourceUrl    String?          @map("source_url") @db.Text
+  sourceType   String?          @map("source_type") @db.VarChar(50) // FILE, URL, PASTE
+  content      String?          @map("content") @db.Text
+  metadata     Json?            @map("metadata")
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamp
+  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamp
+
+  // Relations
+  chunks       DocumentChunk[]  @relation("DocumentChunks")
+  analysisJobs AnalysisJob[]    @relation("DocumentAnalysisJobs")
+
+  @@index([userId, createdAt])
+  @@index([userId])
+  @@map("documents")
+}
+
+model DocumentChunk {
+  id           String           @id @default(uuid()) @db.Uuid
+  documentId   String           @db.Uuid
+  userId       String           @db.Uuid
+  chunkOrder   Int              @map("chunk_order")
+  text         String           @db.Text
+  tokenCount   Int?             @map("token_count")
+  startOffset  Int?             @map("start_offset")
+  endOffset    Int?             @map("end_offset")
+  metadata     Json?            @map("metadata")
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamp
+  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamp
+
+  // Relations
+  document     Document         @relation("DocumentChunks", fields: [documentId], references: [id], onDelete: Cascade)
+  embeddings   Embedding[]      @relation("ChunkEmbeddings")
+  analysisJobs AnalysisJob[]
+
+  @@unique([documentId, chunkOrder])
+  @@index([documentId])
+  @@index([userId])
+  @@map("document_chunks")
+}
+
+model AnalysisJob {
+  id            String        @id @default(uuid()) @db.Uuid
+  userId        String        @db.Uuid
+  documentId    String?       @db.Uuid
+  chunkId       String?       @db.Uuid
+  type          AnalysisType  @default(OTHER)
+  status        JobStatus     @default(PENDING)
+  input         Json?         @map("input")
+  promptSnapshot Json?        @map("prompt_snapshot") // store prompt or template snapshot
+  startedAt     DateTime?     @map("started_at") @db.Timestamp
+  completedAt   DateTime?     @map("completed_at") @db.Timestamp
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamp
+  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamp
+
+  // Relations
+  document      Document?     @relation("DocumentAnalysisJobs", fields: [documentId], references: [id], onDelete: Cascade)
+  chunk         DocumentChunk? @relation(fields: [chunkId], references: [id], onDelete: SetNull)
+  result        AnalysisResult?
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@index([documentId])
+  @@index([chunkId])
+  @@map("analysis_jobs")
+}
+
+model AnalysisResult {
+  id          String     @id @default(uuid()) @db.Uuid
+  jobId       String     @unique @map("job_id") @db.Uuid
+  userId      String     @db.Uuid
+  result      Json?      @map("result")
+  textOutput  String?    @map("text_output") @db.Text
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamp
+  updatedAt   DateTime   @updatedAt @map("updated_at") @db.Timestamp
+
+  // Relations
+  job         AnalysisJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("analysis_results")
+}
+
+model Embedding {
+  id           String    @id @default(uuid()) @db.Uuid
+  chunkId      String    @db.Uuid
+  userId       String    @db.Uuid
+  model        String    @db.VarChar(200)
+  dims         Int
+  // Preferred pgvector column (optional). Requires: CREATE EXTENSION IF NOT EXISTS vector;
+  vector       Unsupported("vector")? @map("vector")
+  // Fallback if pgvector is not available (use Json to store array of floats). Optional.
+  vector_fallback Json?    @map("vector_fallback")
+  metadata     Json?     @map("metadata")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamp
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamp
+
+  // Relations
+  chunk        DocumentChunk @relation("ChunkEmbeddings", fields: [chunkId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([chunkId])
+  @@map("embeddings")
+}
+
+model PromptTemplate {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  name        String   @db.VarChar(200)
+  version     Int
+  template    String   @db.Text
+  metadata    Json?    @map("metadata")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamp
+
+  @@unique([userId, name, version])
+  @@index([userId])
+  @@map("prompt_templates")
+}
+
 

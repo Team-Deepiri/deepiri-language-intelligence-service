@@ -13,9 +13,9 @@ export async function initializeEventPublisher(): Promise<void> {
       config.redis.password
     );
     await streamingClient.connect();
-    logger.info('[Language Intelligence] Connected to Redis Streams');
+    secureLog('info', '[Language Intelligence] Connected to Redis Streams');
   } catch (error: any) {
-    logger.error('[Language Intelligence] Failed to initialize event publisher:', error);
+    secureLog('error', '[Language Intelligence] Failed to initialize event publisher:', error);
     throw error;
   }
 }

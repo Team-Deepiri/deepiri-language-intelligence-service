@@ -1,6 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import { config } from '../config/environment';
-import { logger } from '../utils/logger';
+import { secureLog } from '@deepiri/shared-utils';
 
 export interface AbstractLeaseRequest {
   leaseId: string;
@@ -60,13 +60,13 @@ export class CyrexClient {
    */
   async abstractLease(request: AbstractLeaseRequest): Promise<any> {
     try {
-      logger.info('Calling Cyrex lease abstraction', { leaseId: request.leaseId });
+      secureLog('info', 'Calling Cyrex lease abstraction', { leaseId: request.leaseId });
       
       const response = await this.client.post('/language-intelligence/lease/abstract', request);
       
       return response.data;
     } catch (error: any) {
-      logger.error('Cyrex lease abstraction failed', {
+      secureLog('error', 'Cyrex lease abstraction failed', {
         leaseId: request.leaseId,
         error: error.message,
       });
@@ -79,13 +79,13 @@ export class CyrexClient {
    */
   async abstractContract(request: AbstractContractRequest): Promise<any> {
     try {
-      logger.info('Calling Cyrex contract abstraction', { contractId: request.contractId });
+      secureLog('info', 'Calling Cyrex contract abstraction', { contractId: request.contractId });
       
       const response = await this.client.post('/language-intelligence/contract/abstract', request);
       
       return response.data;
     } catch (error: any) {
-      logger.error('Cyrex contract abstraction failed', {
+      secureLog('error', 'Cyrex contract abstraction failed', {
         contractId: request.contractId,
         error: error.message,
       });
@@ -98,13 +98,13 @@ export class CyrexClient {
    */
   async trackClauseEvolution(request: TrackClauseEvolutionRequest): Promise<any> {
     try {
-      logger.info('Calling Cyrex clause evolution tracking', { contractId: request.contractId });
+      secureLog('info', 'Calling Cyrex clause evolution tracking', { contractId: request.contractId });
       
       const response = await this.client.post('/language-intelligence/contract/track-clause-evolution', request);
       
       return response.data;
     } catch (error: any) {
-      logger.error('Cyrex clause evolution tracking failed', {
+      secureLog('error', 'Cyrex clause evolution tracking failed', {
         contractId: request.contractId,
         error: error.message,
       });
@@ -117,13 +117,13 @@ export class CyrexClient {
    */
   async buildDependencyGraph(request: BuildDependencyGraphRequest): Promise<any> {
     try {
-      logger.info('Calling Cyrex dependency graph builder', { contractId: request.contractId });
+      secureLog('info', 'Calling Cyrex dependency graph builder', { contractId: request.contractId });
       
       const response = await this.client.post('/language-intelligence/contract/build-dependency-graph', request);
       
       return response.data;
     } catch (error: any) {
-      logger.error('Cyrex dependency graph build failed', {
+      secureLog('error', 'Cyrex dependency graph build failed', {
         contractId: request.contractId,
         error: error.message,
       });
@@ -136,13 +136,13 @@ export class CyrexClient {
    */
   async findCascadingObligations(request: FindCascadingObligationsRequest): Promise<any> {
     try {
-      logger.info('Calling Cyrex cascade analysis', { obligationId: request.obligationId });
+      secureLog('info', 'Calling Cyrex cascade analysis', { obligationId: request.obligationId });
       
       const response = await this.client.post('/language-intelligence/obligations/find-cascading', request);
       
       return response.data;
     } catch (error: any) {
-      logger.error('Cyrex cascade analysis failed', {
+      secureLog('error', 'Cyrex cascade analysis failed', {
         obligationId: request.obligationId,
         error: error.message,
       });
@@ -158,7 +158,7 @@ export class CyrexClient {
     newAbstractedTerms: any
   ): Promise<any> {
     try {
-      logger.info('Calling Cyrex contract version comparison');
+      secureLog('info', 'Calling Cyrex contract version comparison');
       
       const response = await this.client.post('/language-intelligence/contract/compare-versions', {
         oldAbstractedTerms,
@@ -167,7 +167,7 @@ export class CyrexClient {
       
       return response.data;
     } catch (error: any) {
-      logger.error('Cyrex contract version comparison failed', { error: error.message });
+      secureLog('error', 'Cyrex contract version comparison failed', { error: error.message });
       throw new Error(`Contract version comparison failed: ${error.message}`);
     }
   }
@@ -180,7 +180,7 @@ export class CyrexClient {
     newAbstractedTerms: any
   ): Promise<any> {
     try {
-      logger.info('Calling Cyrex lease version comparison');
+      secureLog('info', 'Calling Cyrex lease version comparison');
       
       const response = await this.client.post('/language-intelligence/lease/compare-versions', {
         oldAbstractedTerms,
@@ -189,7 +189,7 @@ export class CyrexClient {
       
       return response.data;
     } catch (error: any) {
-      logger.error('Cyrex lease version comparison failed', { error: error.message });
+      secureLog('error', 'Cyrex lease version comparison failed', { error: error.message });
       throw new Error(`Lease version comparison failed: ${error.message}`);
     }
   }
