@@ -549,7 +549,7 @@ model Embedding {
   model        String    @db.VarChar(200)
   dims         Int
   // Preferred pgvector column (optional). Requires: CREATE EXTENSION IF NOT EXISTS vector;
-  vector       Unsupported("vector")? @map("vector")
+  // vector       Unsupported("vector")? @map("vector")
   // Fallback if pgvector is not available (use Json to store array of floats). Optional.
   vector_fallback Json?    @map("vector_fallback")
   metadata     Json?     @map("metadata")
