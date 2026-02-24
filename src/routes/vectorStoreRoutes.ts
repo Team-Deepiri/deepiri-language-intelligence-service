@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { param, body, query } from 'express-validator';
 import axios from 'axios';
 import { config } from '../config/environment';
-import { logger } from '../utils/logger';
+import { secureLog } from '@deepiri/shared-utils';
 import { authenticate } from './middleware/auth';
 import { validate, commonValidations } from '../middleware/inputValidation';
 
@@ -78,7 +78,7 @@ router.get(
       const response = await cyrexClient.get('/api/v1/documents/collections');
       res.json(response.data);
     } catch (error: any) {
-      logger.error('List collections error:', error);
+      secureLog('error', 'List collections error:', error);
       res.status(500).json({ error: 'Failed to list collections', details: error.message });
     }
   }
@@ -100,7 +100,7 @@ router.get(
       });
       res.json(response.data);
     } catch (error: any) {
-      logger.error('Get collection stats error:', error);
+      secureLog('error', 'Get collection stats error:', error);
       res.status(500).json({ error: 'Failed to get collection statistics', details: error.message });
     }
   }
@@ -124,7 +124,7 @@ router.post(
         collection_name: collectionName,
       });
     } catch (error: any) {
-      logger.error('Create collection error:', error);
+      secureLog('error', 'Create collection error:', error);
       res.status(500).json({ error: 'Failed to create collection', details: error.message });
     }
   }
@@ -186,7 +186,7 @@ router.post(
         message: 'Documents added successfully',
       });
     } catch (error: any) {
-      logger.error('Add documents error:', error);
+      secureLog('error', 'Add documents error:', error);
       res.status(500).json({ error: 'Failed to add documents', details: error.message });
     }
   }
@@ -219,7 +219,7 @@ router.delete(
         message: 'Documents deleted successfully',
       });
     } catch (error: any) {
-      logger.error('Delete documents error:', error);
+      secureLog('error', 'Delete documents error:', error);
       res.status(500).json({ error: 'Failed to delete documents', details: error.message });
     }
   }
@@ -267,7 +267,7 @@ router.get(
         });
       }
     } catch (error: any) {
-      logger.error('View documents error:', error);
+      secureLog('error', 'View documents error:', error);
       res.status(500).json({ error: 'Failed to retrieve documents', details: error.message });
     }
   }
@@ -308,11 +308,12 @@ router.post(
         count: response.data.results?.length || 0,
       });
     } catch (error: any) {
-      logger.error('Search documents error:', error);
+      secureLog('error', 'Search documents error:', error);
       res.status(500).json({ error: 'Failed to search documents', details: error.message });
     }
   }
 );
 
 export default router;
+
 
