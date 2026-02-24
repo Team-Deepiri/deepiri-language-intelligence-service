@@ -138,7 +138,7 @@ model Contract {
   fileSize          Int?          @map("file_size")
   
   // Processing status
-  status            String @default("PENDING") @db.VarChar(50)
+  status            ContractStatus @default(PENDING)
   processingStatus  String?       @map("processing_status") @db.VarChar(50)
   processingError   String?       @map("processing_error") @db.Text
   processedAt       DateTime?     @map("processed_at") @db.Timestamp
