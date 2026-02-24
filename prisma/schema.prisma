@@ -122,7 +122,7 @@ model LeaseVersion {
 model Contract {
   id                String        @id @default(uuid()) @db.Uuid
   contractNumber    String        @unique @db.VarChar(100)
-  contractName      String        @map("contract_name") @db.VarChar(255)
+  contractName      String        @db.VarChar(255)
   partyA            String        @db.VarChar(255)
   partyB            String        @db.VarChar(255)
   contractType      String?       @map("contract_type") @db.VarChar(100) // "SERVICE", "SUPPLY", "MSA", "NDA", etc.
