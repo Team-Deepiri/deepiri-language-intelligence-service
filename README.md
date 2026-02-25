@@ -1,6 +1,5 @@
 # Deepiri Language Intelligence Service
 
-**Regulatory-Contract-Lease Language Intelligence Platform**
 
 ## Overview
 
@@ -36,4 +35,5 @@ This service provides:
 - `obligations` - Obligation tracking and dependency graphs
 - `clauses` - Clause extraction and evolution
 - `compliance_patterns` - Compliance pattern mining and prediction
+
 
