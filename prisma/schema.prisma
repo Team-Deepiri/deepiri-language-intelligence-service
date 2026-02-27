@@ -2,8 +2,9 @@
 // PostgreSQL database schema
 
 generator client {
-  provider        = "prisma-client-js"
-  binaryTargets   = ["native"]
+  provider      = "prisma-client-js"
+  binaryTargets = ["native"]
+  output        = "../node_modules/.prisma/client"
 }
 
 datasource db {
@@ -456,6 +457,43 @@ model Document {
   @@map("documents")
 }
 
+// ============================================
+// CONVERSATIONAL INTELLIGENCE MODELS
+// ============================================
+
+model ChatSession {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  
+  // "Soft link" to a specific Contract or Lease context
+  contextId   String?   @map("context_id") @db.Uuid
+  contextType String?   @map("context_type") @db.VarChar(50) // e.g., "CONTRACT", "LEASE"
+  title       String?   @db.VarChar(255)
+  
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamp
+  
+  messages    Message[]
+
+  @@index([userId])
+  @@index([contextId])
+  @@map("chat_sessions")
+}
+
+model Message {
+  id            String      @id @default(uuid()) @db.Uuid
+  chatSessionId String      @map("chat_session_id") @db.Uuid
+  
+  role          String      @db.VarChar(20) // "user" or "assistant"
+  content       String      @db.Text
+  
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamp
+  
+  chatSession   ChatSession @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
+
+  @@index([chatSessionId])
+  @@map("messages")
+}
 model DocumentChunk {
   id           String           @id @default(uuid()) @db.Uuid
   documentId   String           @db.Uuid
