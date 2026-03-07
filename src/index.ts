@@ -1,7 +1,7 @@
 import http from 'http';
 import app from './server';
 import { config } from './config/environment';
-import { secureLog } from '@deepiri/shared-utils';
+import { logger } from '@deepiri/shared-utils';
 import { initializeEventPublisher } from './streaming/eventPublisher';
 import { initializeSocket } from './streaming/socketBroadcaster';
 
@@ -18,7 +18,7 @@ async function startServer() {
       logger.info(`Language Intelligence Service started on port ${config.port}`);
     });
   } catch (error: any) {
-    secureLog('error', 'Failed to start server', { error: error.message });
+    logger.error('Failed to start server', { error: error.message });
     process.exit(1);
   }
 }
