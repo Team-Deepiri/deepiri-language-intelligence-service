@@ -1,4 +1,4 @@
-import { StreamingClient, StreamTopics, StreamEvent } from '@deepiri/shared-utils';
+import { StreamingClient, StreamTopics, StreamEvent, secureLog } from '@deepiri/shared-utils';
 import { config } from '../config/environment';
 import { logger } from '../utils/logger';
 import { broadcastEvent } from './socketBroadcaster';

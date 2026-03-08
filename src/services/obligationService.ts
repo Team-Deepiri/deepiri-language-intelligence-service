@@ -1,5 +1,5 @@
 import { prisma } from '../db';
-import { secureLog } from '@deepiri/shared-utils';
+import { secureLog, logger } from '@deepiri/shared-utils';
 import type { Obligation, Prisma } from '@prisma/client';
 import { eventPublisher } from '../streaming/eventPublisher';
 
@@ -291,8 +291,12 @@ export class ObligationService {
   ): Promise<Obligation> {
     const data: Prisma.ObligationUpdateInput = {};
 
-    if ('leaseId' in input) data.leaseId = input.leaseId ?? null;
-    if ('contractId' in input) data.contractId = input.contractId ?? null;
+    if ('leaseId' in input) {
+      data.lease = input.leaseId != null ? { connect: { id: input.leaseId } } : { disconnect: true };
+    }
+    if ('contractId' in input) {
+      data.contract = input.contractId != null ? { connect: { id: input.contractId } } : { disconnect: true };
+    }
     if ('description' in input && input.description !== undefined) data.description = input.description;
     if ('obligationType' in input && input.obligationType !== undefined) {
       data.obligationType = this._mapObligationType(input.obligationType) as any;
