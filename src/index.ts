@@ -1,7 +1,7 @@
 import http from 'http';
 import app from './server';
 import { config } from './config/environment';
-import { secureLog } from '@deepiri/shared-utils';
+import { secureLog, logger } from '@deepiri/shared-utils';
 import { initializeEventPublisher } from './streaming/eventPublisher';
 import { initializeSocket } from './streaming/socketBroadcaster';
 
