@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { logger } from '@deepiri/shared-utils';
+import { logger } from './utils/logger';
 
 // Create a single PrismaClient instance and export it. connectDatabase() will call $connect().
 export const prisma = new PrismaClient({

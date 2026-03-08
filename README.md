@@ -3,9 +3,6 @@
 
 ## Overview
 
-This service provides:
-- **Phase 1**: Lease Abstraction MVP - Extract structured data from lease documents
-- **Phase 2**: Contract Intelligence - Contract clause evolution tracking and obligation dependency graphs
 
 ## Features
 
@@ -35,5 +32,6 @@ This service provides:
 - `obligations` - Obligation tracking and dependency graphs
 - `clauses` - Clause extraction and evolution
 - `compliance_patterns` - Compliance pattern mining and prediction
+
 
 
