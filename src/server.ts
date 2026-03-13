@@ -11,6 +11,7 @@ import { initializeEventPublisher } from './streaming/eventPublisher';
 import { secureLog } from '@deepiri/shared-utils';
 import { config } from './config/environment';
 import { validateBodyIfPresent } from './middleware/inputValidation';
+import { bodyParserConfig, requestSizeLimiter } from './middleware/requestLimits';
 
 dotenv.config();
 
@@ -36,8 +37,11 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key']
 }));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Request size limits (Issue 8)
+app.use(requestSizeLimiter);
+app.use(express.json(bodyParserConfig.json));
+app.use(express.urlencoded(bodyParserConfig.urlencoded));
 app.use(validateBodyIfPresent());
 
 // File upload configuration
