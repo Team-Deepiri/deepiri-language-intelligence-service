@@ -436,3 +436,32 @@ enum AnalysisType {
   RAG
   OTHER
 }
+
+model ChatSession {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  contextId   String?  @map("context_id") @db.VarChar(255)
+  contextType String?  @map("context_type") @db.VarChar(50)
+  title       String   @default("New Conversation") @db.VarChar(255)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  messages    Message[]
+
+  @@index([userId])
+  @@index([contextId])
+  @@map("chat_sessions")
+}
+
+model Message {
+  id            String      @id @default(uuid()) @db.Uuid
+  chatSessionId String      @map("chat_session_id") @db.Uuid
+  role          String      @db.VarChar(50)
+  content       String
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamp(6)
+  
+  chatSession   ChatSession @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
+
+  @@index([chatSessionId])
+  @@map("messages")
+}

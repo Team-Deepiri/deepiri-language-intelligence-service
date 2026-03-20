@@ -105,6 +105,112 @@ export class ObligationService {
   }
 
   /**
+   * Create a single obligation
+   */
+  async createObligation(data: CreateObligationInput): Promise<Obligation> {
+    return prisma.obligation.create({
+      data: {
+        leaseId: data.leaseId || null,
+        contractId: data.contractId || null,
+        description: data.description,
+        obligationType: this._mapObligationType(data.obligationType) as any,
+        party: this._mapParty(data.party || ''),
+        deadline: data.deadline || null,
+        startDate: data.startDate || null,
+        endDate: data.endDate || null,
+        frequency: data.frequency || null,
+        amount: data.amount || null,
+        currency: data.currency || 'USD',
+        sourceClause: data.sourceClause || null,
+        confidence: data.confidence || null,
+        status: 'PENDING',
+        tags: data.tags || [],
+        notes: data.notes || null,
+      },
+    });
+  }
+
+  /**
+   * Get an obligation by ID
+   */
+  async getObligation(id: string): Promise<Obligation> {
+    const obligation = await prisma.obligation.findUnique({
+      where: { id },
+    });
+    if (!obligation) {
+      throw new Error('Obligation not found');
+    }
+    return obligation;
+  }
+
+  /**
+   * Update an obligation
+   */
+  async updateObligation(id: string, data: Partial<CreateObligationInput> & { status?: string, completedAt?: Date, owner?: string, ownerEmail?: string }): Promise<Obligation> {
+    const updateData: any = { ...data };
+    if (updateData.obligationType) {
+      updateData.obligationType = this._mapObligationType(updateData.obligationType);
+    }
+    if (updateData.party) {
+      updateData.party = this._mapParty(updateData.party);
+    }
+    return prisma.obligation.update({
+      where: { id },
+      data: updateData,
+    });
+  }
+
+  /**
+   * Delete an obligation
+   */
+  async deleteObligation(id: string): Promise<Obligation> {
+    return prisma.obligation.delete({
+      where: { id },
+    });
+  }
+
+  /**
+   * List dependencies
+   */
+  async listDependencies(id: string, direction: 'source' | 'target' | 'both'): Promise<any[]> {
+    const where: any = {};
+    if (direction === 'source') {
+      where.targetObligationId = id;
+    } else if (direction === 'target') {
+      where.sourceObligationId = id;
+    } else {
+      where.OR = [
+        { sourceObligationId: id },
+        { targetObligationId: id },
+      ];
+    }
+    return prisma.obligationDependency.findMany({
+      where,
+    });
+  }
+
+  /**
+   * Create dependency
+   */
+  async createDependency(data: any): Promise<any> {
+    return prisma.obligationDependency.create({
+      data,
+    });
+  }
+
+  /**
+   * Delete dependency
+   */
+  async deleteDependency(sourceId: string, targetId: string): Promise<any> {
+    return prisma.obligationDependency.deleteMany({
+      where: {
+        sourceObligationId: sourceId,
+        targetObligationId: targetId,
+      },
+    });
+  }
+
+  /**
    * List obligations with filters
    */
   async listObligations(filters: ObligationFilters): Promise<Obligation[]> {
