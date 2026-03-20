@@ -3,7 +3,7 @@ import { cyrexClient } from './cyrexClient';
 import { documentService } from './documentService';
 import { obligationService } from './obligationService';
 import { eventPublisher } from '../streaming/eventPublisher';
-import { secureLog } from '@deepiri/shared-utils';
+import { logger } from '@deepiri/shared-utils';
 import type { Lease, LeaseVersion, Prisma } from '@prisma/client';
 
 export interface CreateLeaseInput {
@@ -46,7 +46,7 @@ export class LeaseAbstractionService {
       },
     });
 
-    secureLog('info', 'Lease created', { leaseId: lease.id, leaseNumber: lease.leaseNumber });
+    logger.info('Lease created', { leaseId: lease.id, leaseNumber: lease.leaseNumber });
     await eventPublisher.publishLeaseCreated(lease.id, lease.leaseNumber);
 
     return lease;
@@ -154,7 +154,7 @@ export class LeaseAbstractionService {
       try {
         await this.processLease(leaseId);
       } catch (error: any) {
-        secureLog('error', 'Error in async lease processing', { leaseId, error: error.message });
+        logger.error('Error in async lease processing', { leaseId, error: error.message });
       }
     });
   }

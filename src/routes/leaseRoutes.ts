@@ -6,9 +6,8 @@ import { obligationService } from '../services/obligationService';
 import { documentService } from '../services/documentService';
 import { authenticate } from './middleware/auth';
 import { handleValidationErrors } from './middleware/validation';
-import { secureLog } from '@deepiri/shared-utils';
+import { logger } from '@deepiri/shared-utils';
 import { validate, commonValidations } from '../middleware/inputValidation';
-import { logger } from '../utils/logger';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -59,7 +58,7 @@ router.post(
       
       // Trigger async processing
       leaseAbstractionService.processLeaseAsync(lease.id).catch((error) => {
-        secureLog('error', 'Failed to process lease asynchronously', { leaseId: lease.id, error });
+        logger.error('Failed to process lease asynchronously', { leaseId: lease.id, error });
       });
       
       res.status(201).json({
@@ -67,7 +66,7 @@ router.post(
         data: lease,
       });
     } catch (error: any) {
-      secureLog('error', 'Error uploading lease', { error: error.message });
+      logger.error('Error uploading lease', { error: error.message });
       res.status(500).json({ error: 'Failed to upload lease', message: error.message });
     }
   }
@@ -144,7 +143,7 @@ router.post(
         data: version,
       });
     } catch (error: any) {
-      secureLog('error', 'Error uploading lease version', { leaseId: req.params.id, error: error.message });
+      logger.error('Error uploading lease version', { leaseId: req.params.id, error: error.message });
       res.status(500).json({ error: 'Failed to upload lease version', message: error.message });
     }
   }
@@ -171,7 +170,7 @@ router.get(
       
       res.json({ success: true, data: diff });
     } catch (error: any) {
-      secureLog('error', 'Error comparing versions', { error: error.message });
+      logger.error('Error comparing versions', { error: error.message });
       res.status(500).json({ error: 'Failed to compare versions', message: error.message });
     }
   }
