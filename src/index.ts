@@ -3,18 +3,22 @@ import app from './server';
 import { config } from './config/environment';
 import { secureLog } from '@deepiri/shared-utils';
 import { initializeEventPublisher } from './streaming/eventPublisher';
-import { initializeSocket } from './streaming/socketBroadcaster';
+import { streamConsumer } from './services/streamConsumerService';
+import { registerStreamHandlers } from './services/streamRegistry';
+
+process.on('SIGTERM', async () => {
+  await streamConsumer.stop();
+});
 
 async function startServer() {
   try {
-    // Initialize event publisher
     await initializeEventPublisher();
 
-    const httpServer = http.createServer(app);
+    registerStreamHandlers();
+    await streamConsumer.connect();
+    await streamConsumer.start();
 
-    initializeSocket(httpServer);
-
-    httpServer.listen(config.port, () => {
+    app.listen(config.port, () => {
       logger.info(`Language Intelligence Service started on port ${config.port}`);
     });
   } catch (error: any) {
@@ -24,4 +28,3 @@ async function startServer() {
 }
 
 startServer();
-
