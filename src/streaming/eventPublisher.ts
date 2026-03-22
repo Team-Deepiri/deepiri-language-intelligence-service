@@ -205,6 +205,52 @@ export async function publishDependencyGraphBuilt(
   logger.info(`[Language Intelligence] Published dependency-graph-built: ${contractId}`);
 }
 
+export async function publishDataBatchPreprocessed(payload: {
+  batchId: string;
+  datasetId: string;
+  recordCount: number;
+  passedQualityCheck: boolean;
+  success: boolean;
+  executionTime?: number;
+  stageName?: string | null;
+  error?: string | null;
+  processedData?: any[] | null;
+  sampleRecords?: any[];
+  storageRef?: string | null;
+  validationResult?: Record<string, any>;
+  qualityMetrics?: Record<string, any>;
+  userId?: string | null;
+}): Promise<void> {
+  if (!streamingClient) await initializeEventPublisher();
+
+  const event: StreamEvent = {
+    event: 'data-batch-preprocessed',
+    timestamp: new Date().toISOString(),
+    source: 'language-intelligence-service',
+    service: 'language-intelligence-service',
+    user_id: payload.userId ?? null,
+    action: 'data-batch-preprocessed',
+    data: {
+      batch_id: payload.batchId,
+      dataset_id: payload.datasetId,
+      record_count: payload.recordCount,
+      passed_quality_check: payload.passedQualityCheck,
+      success: payload.success,
+      execution_time: payload.executionTime,
+      stage_name: payload.stageName ?? null,
+      error: payload.error ?? null,
+      processed_data: payload.processedData ?? null,
+      sample_records: payload.sampleRecords ?? [],
+      storage_ref: payload.storageRef ?? null,
+      validation_result: payload.validationResult ?? {},
+      quality_metrics: payload.qualityMetrics ?? {},
+    },
+  };
+
+  await streamingClient!.publish(StreamTopics.TRAINING_EVENTS, event);
+  logger.info(`[Language Intelligence] Published data-batch-preprocessed: ${payload.batchId}`);
+}
+
 export const eventPublisher = {
   publishLeaseCreated,
   publishLeaseProcessed,
@@ -216,5 +262,6 @@ export const eventPublisher = {
   publishContractVersionCreated,
   publishClauseEvolutionTracked,
   publishDependencyGraphBuilt,
+  publishDataBatchPreprocessed,
 };
 
