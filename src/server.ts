@@ -8,9 +8,10 @@ import { v4 as uuidv4 } from 'uuid';
 import routes from './routes';
 import { connectDatabase, prisma } from './db';
 import { initializeEventPublisher } from './streaming/eventPublisher';
-import { secureLog } from '@deepiri/shared-utils';
+import { logger } from '@deepiri/shared-utils';
 import { config } from './config/environment';
 import { validateBodyIfPresent } from './middleware/inputValidation';
+import { bodyParserConfig, requestSizeLimiter } from './middleware/requestLimits';
 
 dotenv.config();
 
@@ -36,8 +37,11 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key']
 }));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Request size limits (Issue 8)
+app.use(requestSizeLimiter);
+app.use(express.json(bodyParserConfig.json));
+app.use(express.urlencoded(bodyParserConfig.urlencoded));
 app.use(validateBodyIfPresent());
 
 // File upload configuration
@@ -63,13 +67,13 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // Database connection
 connectDatabase()
   .catch((err: Error) => {
-    secureLog('error', 'Language Intelligence Service: Failed to connect to PostgreSQL', err);
+    logger.error('Language Intelligence Service: Failed to connect to PostgreSQL', { error: err.message });
     process.exit(1);
   });
 
 // Initialize event publisher
 initializeEventPublisher().catch((err) => {
-  secureLog('error', 'Failed to initialize event publisher:', err);
+  logger.error('Failed to initialize event publisher:', { error: err.message });
 });
 
 // Health check
@@ -93,7 +97,7 @@ app.get('/health', async (req: Request, res: Response) => {
       });
     }
   } catch (error: any) {
-    secureLog('error', 'Health check failed:', error);
+    logger.error('Health check failed:', { error: error.message });
     res.status(503).json({ 
       status: 'unhealthy', 
       service: 'language-intelligence-service',
@@ -109,7 +113,7 @@ app.use('/api/v1', routes);
 
 // Error handler
 const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
-  secureLog('error', 'Language Intelligence Service error:', err);
+  logger.error('Language Intelligence Service error:', { error: err.message });
   res.status(500).json({ 
     error: 'Internal server error',
     message: process.env.NODE_ENV === 'development' ? err.message : undefined

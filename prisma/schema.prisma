@@ -1,10 +1,6 @@
-// Prisma Schema for Language Intelligence Service
-// PostgreSQL database schema
-
 generator client {
   provider      = "prisma-client-js"
   binaryTargets = ["native"]
-  output        = "../node_modules/.prisma/client"
 }
 
 datasource db {
@@ -12,65 +8,45 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ============================================
-// PHASE 1: LEASE ABSTRACTION MODELS
-// ============================================
-
 model Lease {
-  id                String        @id @default(uuid()) @db.Uuid
-  leaseNumber       String        @unique @db.VarChar(100)
-  tenantName        String        @map("tenant_name") @db.VarChar(255)
-  landlordName      String?       @map("landlord_name") @db.VarChar(255)
-  propertyAddress   String        @map("property_address") @db.VarChar(500)
-  propertyType      String?       @map("property_type") @db.VarChar(100) // "OFFICE", "RETAIL", "INDUSTRIAL", etc.
-  squareFootage     Int?          @map("square_footage")
-  
-  // Document storage
-  documentUrl       String        @map("document_url") @db.Text
-  documentStorageKey String?       @map("document_storage_key") @db.VarChar(255)
-  rawText           String?       @map("raw_text") @db.Text
-  documentType      String        @default("PDF") @map("document_type") @db.VarChar(50)
-  fileSize          Int?          @map("file_size")
-  
-  // Dates
-  startDate         DateTime      @map("start_date") @db.Timestamp
-  endDate           DateTime      @map("end_date") @db.Timestamp
-  
-  // Processing status
-  status            LeaseStatus   @default(PENDING)
-  processingStatus  String?       @map("processing_status") @db.VarChar(50)
-  processingError   String?       @map("processing_error") @db.Text
-  processedAt       DateTime?     @map("processed_at") @db.Timestamp
-  processingTimeMs  Int?          @map("processing_time_ms")
-  
-  // Abstracted data
-  abstractedTerms   Json?         @map("abstracted_terms")
-  financialTerms    Json?         @map("financial_terms")
-  keyDates          Json?         @map("key_dates")
-  propertyDetails   Json?         @map("property_details")
-  keyClauses        Json?         @map("key_clauses")
-  
-  // Confidence scores
-  extractionConfidence Float?      @map("extraction_confidence") @db.DoublePrecision
-  validationScore     Float?       @map("validation_score") @db.DoublePrecision
-  
-  // User/tenant information
-  userId            String?       @map("user_id") @db.Uuid
-  organizationId    String?       @map("organization_id") @db.Uuid
-  
-  // Metadata
-  tags              String[]      @default([])
-  notes             String?       @db.Text
-  metadata          Json?         @default("{}")
-  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamp
-  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamp
-  createdBy         String?       @map("created_by") @db.Uuid
-  updatedBy         String?       @map("updated_by") @db.Uuid
-  
-  // Relations
-  versions          LeaseVersion[]
-  obligations       Obligation[]
-  
+  id                   String         @id @default(uuid()) @db.Uuid
+  leaseNumber          String         @unique @db.VarChar(100)
+  tenantName           String         @map("tenant_name") @db.VarChar(255)
+  landlordName         String?        @map("landlord_name") @db.VarChar(255)
+  propertyAddress      String         @map("property_address") @db.VarChar(500)
+  propertyType         String?        @map("property_type") @db.VarChar(100)
+  squareFootage        Int?           @map("square_footage")
+  documentUrl          String         @map("document_url")
+  documentStorageKey   String?        @map("document_storage_key") @db.VarChar(255)
+  rawText              String?        @map("raw_text")
+  documentType         String         @default("PDF") @map("document_type") @db.VarChar(50)
+  fileSize             Int?           @map("file_size")
+  startDate            DateTime       @map("start_date") @db.Timestamp(6)
+  endDate              DateTime       @map("end_date") @db.Timestamp(6)
+  status               LeaseStatus    @default(PENDING)
+  processingStatus     String?        @map("processing_status") @db.VarChar(50)
+  processingError      String?        @map("processing_error")
+  processedAt          DateTime?      @map("processed_at") @db.Timestamp(6)
+  processingTimeMs     Int?           @map("processing_time_ms")
+  abstractedTerms      Json?          @map("abstracted_terms")
+  financialTerms       Json?          @map("financial_terms")
+  keyDates             Json?          @map("key_dates")
+  propertyDetails      Json?          @map("property_details")
+  keyClauses           Json?          @map("key_clauses")
+  extractionConfidence Float?         @map("extraction_confidence")
+  validationScore      Float?         @map("validation_score")
+  userId               String?        @map("user_id") @db.Uuid
+  organizationId       String?        @map("organization_id") @db.Uuid
+  tags                 String[]       @default([])
+  notes                String?
+  metadata             Json?          @default("{}")
+  createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt            DateTime       @updatedAt @map("updated_at") @db.Timestamp(6)
+  createdBy            String?        @map("created_by") @db.Uuid
+  updatedBy            String?        @map("updated_by") @db.Uuid
+  versions             LeaseVersion[]
+  obligations          Obligation[]
+
   @@index([leaseNumber])
   @@index([tenantName])
   @@index([status])
@@ -81,97 +57,71 @@ model Lease {
 }
 
 model LeaseVersion {
-  id                String        @id @default(uuid()) @db.Uuid
-  leaseId           String        @map("lease_id") @db.Uuid
-  versionNumber     Int           @map("version_number")
-  documentUrl       String        @map("document_url") @db.Text
-  rawText           String        @map("raw_text") @db.Text
-  abstractedTerms   Json          @map("abstracted_terms")
-  
-  // Change tracking
-  changes           Json?         // Diff from previous version
-  changeSummary     String?       @map("change_summary") @db.Text
-  changeType        String?       @map("change_type") @db.VarChar(50) // "AMENDMENT", "RENEWAL", "TERMINATION", "NEW_VERSION"
-  significantChanges Boolean       @default(false) @map("significant_changes")
-  
-  // Processing metadata
-  processedAt       DateTime      @default(now()) @map("processed_at") @db.Timestamp
-  processingTimeMs  Int?          @map("processing_time_ms")
-  
-  // Metadata
-  metadata          Json?         @default("{}")
-  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamp
-  createdBy         String?       @map("created_by") @db.Uuid
-  
-  // Relations
-  lease             Lease         @relation(fields: [leaseId], references: [id], onDelete: Cascade)
-  
+  id                 String   @id @default(uuid()) @db.Uuid
+  leaseId            String   @map("lease_id") @db.Uuid
+  versionNumber      Int      @map("version_number")
+  documentUrl        String   @map("document_url")
+  rawText            String   @map("raw_text")
+  abstractedTerms    Json     @map("abstracted_terms")
+  changes            Json?
+  changeSummary      String?  @map("change_summary")
+  changeType         String?  @map("change_type") @db.VarChar(50)
+  significantChanges Boolean  @default(false) @map("significant_changes")
+  processedAt        DateTime @default(now()) @map("processed_at") @db.Timestamp(6)
+  processingTimeMs   Int?     @map("processing_time_ms")
+  metadata           Json?    @default("{}")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  createdBy          String?  @map("created_by") @db.Uuid
+  lease              Lease    @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+
   @@unique([leaseId, versionNumber])
   @@index([leaseId])
   @@index([versionNumber])
   @@map("lease_versions")
 }
 
-// ============================================
-// PHASE 2: CONTRACT INTELLIGENCE MODELS
-// ============================================
-
 model Contract {
-  id                String        @id @default(uuid()) @db.Uuid
-  contractNumber    String        @unique @db.VarChar(100)
-  contractName      String        @map("contract_name") @db.VarChar(255)
-  partyA            String        @db.VarChar(255)
-  partyB            String        @db.VarChar(255)
-  contractType      String?       @map("contract_type") @db.VarChar(100) // "SERVICE", "SUPPLY", "MSA", "NDA", etc.
-  jurisdiction      String?       @db.VarChar(100)
-  effectiveDate     DateTime      @map("effective_date") @db.Timestamp
-  expirationDate    DateTime?     @map("expiration_date") @db.Timestamp
-  
-  // Document storage
-  documentUrl       String        @map("document_url") @db.Text
-  documentStorageKey String?       @map("document_storage_key") @db.VarChar(255)
-  rawText           String?       @map("raw_text") @db.Text
-  documentType      String        @default("PDF") @map("document_type") @db.VarChar(50)
-  fileSize          Int?          @map("file_size")
-  
-  // Processing status
-  status            ContractStatus @default(PENDING)
-  processingStatus  String?       @map("processing_status") @db.VarChar(50)
-  processingError   String?       @map("processing_error") @db.Text
-  processedAt       DateTime?     @map("processed_at") @db.Timestamp
-  processingTimeMs  Int?          @map("processing_time_ms")
-  
-  // Abstracted data
-  abstractedTerms   Json?         @map("abstracted_terms")
-  keyClauses        Json?         @map("key_clauses")
-  financialTerms    Json?         @map("financial_terms")
-  terminationTerms  Json?         @map("termination_terms")
-  renewalTerms      Json?         @map("renewal_terms")
-  
-  // Confidence scores
-  extractionConfidence Float?     @map("extraction_confidence") @db.DoublePrecision
-  validationScore      Float?     @map("validation_score") @db.DoublePrecision
-  
-  // User/tenant information
-  userId            String?       @map("user_id") @db.Uuid
-  organizationId    String?       @map("organization_id") @db.Uuid
-  
-  // Metadata
-  tags              String[]      @default([])
-  notes             String?       @db.Text
-  metadata          Json?         @default("{}")
-  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamp
-  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamp
-  createdBy         String?       @map("created_by") @db.Uuid
-  updatedBy         String?       @map("updated_by") @db.Uuid
-  
-  // Relations
-  clauses           Clause[]
-  versions          ContractVersion[]
-  obligations       Obligation[]
-  dependencies      ObligationDependency[] @relation("SourceContract")
-  targetDependencies ObligationDependency[] @relation("TargetContract")
-  
+  id                   String                 @id @default(uuid()) @db.Uuid
+  contractNumber       String                 @unique @db.VarChar(100)
+  contractName         String                 @map("contract_name") @db.VarChar(255)
+  partyA               String                 @db.VarChar(255)
+  partyB               String                 @db.VarChar(255)
+  contractType         String?                @map("contract_type") @db.VarChar(100)
+  jurisdiction         String?                @db.VarChar(100)
+  effectiveDate        DateTime               @map("effective_date") @db.Timestamp(6)
+  expirationDate       DateTime?              @map("expiration_date") @db.Timestamp(6)
+  documentUrl          String                 @map("document_url")
+  documentStorageKey   String?                @map("document_storage_key") @db.VarChar(255)
+  rawText              String?                @map("raw_text")
+  documentType         String                 @default("PDF") @map("document_type") @db.VarChar(50)
+  fileSize             Int?                   @map("file_size")
+  status               ContractStatus         @default(PENDING)
+  processingStatus     String?                @map("processing_status") @db.VarChar(50)
+  processingError      String?                @map("processing_error")
+  processedAt          DateTime?              @map("processed_at") @db.Timestamp(6)
+  processingTimeMs     Int?                   @map("processing_time_ms")
+  abstractedTerms      Json?                  @map("abstracted_terms")
+  keyClauses           Json?                  @map("key_clauses")
+  financialTerms       Json?                  @map("financial_terms")
+  terminationTerms     Json?                  @map("termination_terms")
+  renewalTerms         Json?                  @map("renewal_terms")
+  extractionConfidence Float?                 @map("extraction_confidence")
+  validationScore      Float?                 @map("validation_score")
+  userId               String?                @map("user_id") @db.Uuid
+  organizationId       String?                @map("organization_id") @db.Uuid
+  tags                 String[]               @default([])
+  notes                String?
+  metadata             Json?                  @default("{}")
+  createdAt            DateTime               @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt            DateTime               @updatedAt @map("updated_at") @db.Timestamp(6)
+  createdBy            String?                @map("created_by") @db.Uuid
+  updatedBy            String?                @map("updated_by") @db.Uuid
+  clauses              Clause[]
+  versions             ContractVersion[]
+  dependencies         ObligationDependency[] @relation("SourceContract")
+  targetDependencies   ObligationDependency[] @relation("TargetContract")
+  obligations          Obligation[]
+
   @@index([contractNumber])
   @@index([partyA])
   @@index([partyB])
@@ -183,35 +133,27 @@ model Contract {
 }
 
 model Clause {
-  id                String        @id @default(uuid()) @db.Uuid
-  contractId        String        @map("contract_id") @db.Uuid
-  clauseType        String        @map("clause_type") @db.VarChar(100) // "TERMINATION", "PAYMENT", "LIABILITY", etc.
-  clauseTitle       String?       @map("clause_title") @db.VarChar(255)
-  clauseText        String        @map("clause_text") @db.Text
-  clauseSummary     String?       @map("clause_summary") @db.Text
-  sectionNumber     String?       @map("section_number") @db.VarChar(50)
-  pageNumber        Int?          @map("page_number")
-  
-  // Version tracking
-  versionNumber     Int           @map("version_number")
-  previousVersionId String?       @map("previous_version_id") @db.Uuid
-  
-  // Evolution tracking
-  changes           Json?         // What changed from previous version
-  changeType        String?       @map("change_type") @db.VarChar(50) // "ADDED", "MODIFIED", "DELETED", "UNCHANGED"
-  changeSummary     String?       @map("change_summary") @db.Text
-  significantChange Boolean       @default(false) @map("significant_change")
-  
-  // Extraction metadata
-  extractedAt       DateTime      @default(now()) @map("extracted_at") @db.Timestamp
-  confidence        Float?        @db.DoublePrecision
-  extractionMethod  String?       @map("extraction_method") @db.VarChar(50) // "LLM", "RULE_BASED", "HYBRID"
-  
-  // Relations
-  contract          Contract      @relation(fields: [contractId], references: [id], onDelete: Cascade)
-  previousVersion   Clause?       @relation("ClauseVersions", fields: [previousVersionId], references: [id])
-  nextVersions      Clause[]      @relation("ClauseVersions")
-  
+  id                String   @id @default(uuid()) @db.Uuid
+  contractId        String   @map("contract_id") @db.Uuid
+  clauseType        String   @map("clause_type") @db.VarChar(100)
+  clauseTitle       String?  @map("clause_title") @db.VarChar(255)
+  clauseText        String   @map("clause_text")
+  clauseSummary     String?  @map("clause_summary")
+  sectionNumber     String?  @map("section_number") @db.VarChar(50)
+  pageNumber        Int?     @map("page_number")
+  versionNumber     Int      @map("version_number")
+  previousVersionId String?  @map("previous_version_id") @db.Uuid
+  changes           Json?
+  changeType        String?  @map("change_type") @db.VarChar(50)
+  changeSummary     String?  @map("change_summary")
+  significantChange Boolean  @default(false) @map("significant_change")
+  extractedAt       DateTime @default(now()) @map("extracted_at") @db.Timestamp(6)
+  confidence        Float?
+  extractionMethod  String?  @map("extraction_method") @db.VarChar(50)
+  contract          Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  previousVersion   Clause?  @relation("ClauseVersions", fields: [previousVersionId], references: [id])
+  nextVersions      Clause[] @relation("ClauseVersions")
+
   @@index([contractId, versionNumber])
   @@index([clauseType])
   @@index([versionNumber])
@@ -220,87 +162,58 @@ model Clause {
 }
 
 model ContractVersion {
-  id                String        @id @default(uuid()) @db.Uuid
-  contractId        String        @map("contract_id") @db.Uuid
-  versionNumber     Int           @map("version_number")
-  documentUrl       String        @map("document_url") @db.Text
-  rawText           String        @map("raw_text") @db.Text
-  abstractedTerms   Json          @map("abstracted_terms")
-  
-  // Change tracking
-  changes           Json?         // Diff from previous version
-  changeSummary     String?       @map("change_summary") @db.Text
-  changeType        String?       @map("change_type") @db.VarChar(50) // "AMENDMENT", "RENEWAL", "TERMINATION", "NEW_VERSION"
-  significantChanges Boolean      @default(false) @map("significant_changes")
-  
-  // Processing metadata
-  processedAt       DateTime      @default(now()) @map("processed_at") @db.Timestamp
-  processingTimeMs  Int?          @map("processing_time_ms")
-  
-  // Metadata
-  metadata          Json?         @default("{}")
-  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamp
-  createdBy         String?       @map("created_by") @db.Uuid
-  
-  // Relations
-  contract          Contract      @relation(fields: [contractId], references: [id], onDelete: Cascade)
-  
+  id                 String   @id @default(uuid()) @db.Uuid
+  contractId         String   @map("contract_id") @db.Uuid
+  versionNumber      Int      @map("version_number")
+  documentUrl        String   @map("document_url")
+  rawText            String   @map("raw_text")
+  abstractedTerms    Json     @map("abstracted_terms")
+  changes            Json?
+  changeSummary      String?  @map("change_summary")
+  changeType         String?  @map("change_type") @db.VarChar(50)
+  significantChanges Boolean  @default(false) @map("significant_changes")
+  processedAt        DateTime @default(now()) @map("processed_at") @db.Timestamp(6)
+  processingTimeMs   Int?     @map("processing_time_ms")
+  metadata           Json?    @default("{}")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  createdBy          String?  @map("created_by") @db.Uuid
+  contract           Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
   @@unique([contractId, versionNumber])
   @@index([contractId])
   @@index([versionNumber])
   @@map("contract_versions")
 }
 
-// ============================================
-// SHARED: OBLIGATION MODELS
-// ============================================
-
 model Obligation {
-  id                String        @id @default(uuid()) @db.Uuid
-  leaseId           String?       @map("lease_id") @db.Uuid
-  contractId        String?       @map("contract_id") @db.Uuid
-  
-  description       String        @db.Text
-  obligationType    ObligationType @map("obligation_type")
-  party             String        @db.VarChar(50) // "TENANT", "LANDLORD", "PARTY_A", "PARTY_B", "BOTH"
-  
-  // Dates
-  deadline          DateTime?     @db.Timestamp
-  startDate         DateTime?     @map("start_date") @db.Timestamp
-  endDate           DateTime?     @map("end_date") @db.Timestamp
-  
-  // Frequency
-  frequency         String?       @db.VarChar(50) // "ONE_TIME", "MONTHLY", "QUARTERLY", "ANNUAL", "ONGOING"
-  
-  // Financial
-  amount            Float?        @db.DoublePrecision
-  currency          String?       @default("USD") @db.VarChar(10)
-  
-  // Source
-  sourceClause      String?       @map("source_clause") @db.Text
-  confidence        Float?        @db.DoublePrecision
-  
-  // Status
-  status            ObligationStatus @default(PENDING)
-  completedAt       DateTime?     @map("completed_at") @db.Timestamp
-  
-  // Assignment
-  owner             String?       @db.VarChar(255)
-  ownerEmail        String?       @map("owner_email") @db.VarChar(255)
-  
-  // Metadata
-  tags              String[]      @default([])
-  notes             String?       @db.Text
-  metadata          Json?         @default("{}")
-  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamp
-  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamp
-  
-  // Relations
-  lease             Lease?        @relation(fields: [leaseId], references: [id], onDelete: Cascade)
-  contract          Contract?     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  id                 String                 @id @default(uuid()) @db.Uuid
+  leaseId            String?                @map("lease_id") @db.Uuid
+  contractId         String?                @map("contract_id") @db.Uuid
+  description        String
+  obligationType     ObligationType         @map("obligation_type")
+  party              String                 @db.VarChar(50)
+  deadline           DateTime?              @db.Timestamp(6)
+  startDate          DateTime?              @map("start_date") @db.Timestamp(6)
+  endDate            DateTime?              @map("end_date") @db.Timestamp(6)
+  frequency          String?                @db.VarChar(50)
+  amount             Float?
+  currency           String?                @default("USD") @db.VarChar(10)
+  sourceClause       String?                @map("source_clause")
+  confidence         Float?
+  status             ObligationStatus       @default(PENDING)
+  completedAt        DateTime?              @map("completed_at") @db.Timestamp(6)
+  owner              String?                @db.VarChar(255)
+  ownerEmail         String?                @map("owner_email") @db.VarChar(255)
+  tags               String[]               @default([])
+  notes              String?
+  metadata           Json?                  @default("{}")
+  createdAt          DateTime               @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt          DateTime               @updatedAt @map("updated_at") @db.Timestamp(6)
   sourceDependencies ObligationDependency[] @relation("SourceObligations")
   targetDependencies ObligationDependency[] @relation("TargetObligations")
-  
+  contract           Contract?              @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  lease              Lease?                 @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+
   @@index([leaseId])
   @@index([contractId])
   @@index([status])
@@ -310,39 +223,31 @@ model Obligation {
 }
 
 model ObligationDependency {
-  id                String        @id @default(uuid()) @db.Uuid
-  sourceObligationId String       @map("source_obligation_id") @db.Uuid
-  targetObligationId String       @map("target_obligation_id") @db.Uuid
-  dependencyType    DependencyType @map("dependency_type")
-  description       String?       @db.Text
-  confidence        Float?        @db.DoublePrecision // 0-1 confidence in dependency
-  
-  // Context
-  sourceClause      String?       @map("source_clause") @db.Text
-  targetClause      String?       @map("target_clause") @db.Text
-  triggerCondition String?       @map("trigger_condition") @db.Text
-  
-  // Cross-document dependencies
-  sourceContractId  String?       @map("source_contract_id") @db.Uuid
-  targetContractId  String?       @map("target_contract_id") @db.Uuid
-  sourceLeaseId     String?       @map("source_lease_id") @db.Uuid
-  targetLeaseId     String?       @map("target_lease_id") @db.Uuid
-  
-  // Metadata
-  discoveredAt      DateTime      @default(now()) @map("discovered_at") @db.Timestamp
-  discoveredBy       String?       @map("discovered_by") @db.VarChar(50) // "LLM", "RULE_BASED", "ML_MODEL"
-  verified          Boolean        @default(false)
-  verifiedAt        DateTime?      @map("verified_at") @db.Timestamp
-  verifiedBy        String?        @map("verified_by") @db.Uuid
-  metadata          Json?          @default("{}")
-  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamp
-  
-  // Relations
-  sourceObligation  Obligation    @relation("SourceObligations", fields: [sourceObligationId], references: [id], onDelete: Cascade)
-  targetObligation  Obligation    @relation("TargetObligations", fields: [targetObligationId], references: [id], onDelete: Cascade)
-  sourceContract    Contract?     @relation("SourceContract", fields: [sourceContractId], references: [id])
-  targetContract    Contract?     @relation("TargetContract", fields: [targetContractId], references: [id])
-  
+  id                 String         @id @default(uuid()) @db.Uuid
+  sourceObligationId String         @map("source_obligation_id") @db.Uuid
+  targetObligationId String         @map("target_obligation_id") @db.Uuid
+  dependencyType     DependencyType @map("dependency_type")
+  description        String?
+  confidence         Float?
+  sourceClause       String?        @map("source_clause")
+  targetClause       String?        @map("target_clause")
+  triggerCondition   String?        @map("trigger_condition")
+  sourceContractId   String?        @map("source_contract_id") @db.Uuid
+  targetContractId   String?        @map("target_contract_id") @db.Uuid
+  sourceLeaseId      String?        @map("source_lease_id") @db.Uuid
+  targetLeaseId      String?        @map("target_lease_id") @db.Uuid
+  discoveredAt       DateTime       @default(now()) @map("discovered_at") @db.Timestamp(6)
+  discoveredBy       String?        @map("discovered_by") @db.VarChar(50)
+  verified           Boolean        @default(false)
+  verifiedAt         DateTime?      @map("verified_at") @db.Timestamp(6)
+  verifiedBy         String?        @map("verified_by") @db.Uuid
+  metadata           Json?          @default("{}")
+  createdAt          DateTime       @default(now()) @map("created_at") @db.Timestamp(6)
+  sourceContract     Contract?      @relation("SourceContract", fields: [sourceContractId], references: [id])
+  sourceObligation   Obligation     @relation("SourceObligations", fields: [sourceObligationId], references: [id], onDelete: Cascade)
+  targetContract     Contract?      @relation("TargetContract", fields: [targetContractId], references: [id])
+  targetObligation   Obligation     @relation("TargetObligations", fields: [targetObligationId], references: [id], onDelete: Cascade)
+
   @@unique([sourceObligationId, targetObligationId])
   @@index([sourceObligationId])
   @@index([targetObligationId])
@@ -353,9 +258,116 @@ model ObligationDependency {
   @@map("obligation_dependencies")
 }
 
-// ============================================
-// ENUMS
-// ============================================
+model Document {
+  id           String          @id @default(uuid()) @db.Uuid
+  userId       String          @db.Uuid
+  title        String?         @db.VarChar(500)
+  sourceUrl    String?         @map("source_url")
+  sourceType   String?         @map("source_type") @db.VarChar(50)
+  content      String?         @map("content")
+  metadata     Json?           @map("metadata")
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime        @updatedAt @map("updated_at") @db.Timestamp(6)
+  analysisJobs AnalysisJob[]   @relation("DocumentAnalysisJobs")
+  chunks       DocumentChunk[] @relation("DocumentChunks")
+
+  @@index([userId, createdAt])
+  @@index([userId])
+  @@map("documents")
+}
+
+model DocumentChunk {
+  id           String        @id @default(uuid()) @db.Uuid
+  documentId   String        @db.Uuid
+  userId       String        @db.Uuid
+  chunkOrder   Int           @map("chunk_order")
+  text         String
+  tokenCount   Int?          @map("token_count")
+  startOffset  Int?          @map("start_offset")
+  endOffset    Int?          @map("end_offset")
+  metadata     Json?         @map("metadata")
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime      @updatedAt @map("updated_at") @db.Timestamp(6)
+  analysisJobs AnalysisJob[]
+  document     Document      @relation("DocumentChunks", fields: [documentId], references: [id], onDelete: Cascade)
+  embeddings   Embedding[]   @relation("ChunkEmbeddings")
+
+  @@unique([documentId, chunkOrder])
+  @@index([documentId])
+  @@index([userId])
+  @@map("document_chunks")
+}
+
+model AnalysisJob {
+  id             String          @id @default(uuid()) @db.Uuid
+  userId         String          @db.Uuid
+  documentId     String?         @db.Uuid
+  chunkId        String?         @db.Uuid
+  type           AnalysisType    @default(OTHER)
+  status         JobStatus       @default(PENDING)
+  input          Json?           @map("input")
+  promptSnapshot Json?           @map("prompt_snapshot")
+  startedAt      DateTime?       @map("started_at") @db.Timestamp(6)
+  completedAt    DateTime?       @map("completed_at") @db.Timestamp(6)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamp(6)
+  chunk          DocumentChunk?  @relation(fields: [chunkId], references: [id])
+  document       Document?       @relation("DocumentAnalysisJobs", fields: [documentId], references: [id], onDelete: Cascade)
+  result         AnalysisResult?
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@index([documentId])
+  @@index([chunkId])
+  @@map("analysis_jobs")
+}
+
+model AnalysisResult {
+  id         String      @id @default(uuid()) @db.Uuid
+  jobId      String      @unique @map("job_id") @db.Uuid
+  userId     String      @db.Uuid
+  result     Json?       @map("result")
+  textOutput String?     @map("text_output")
+  createdAt  DateTime    @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt  DateTime    @updatedAt @map("updated_at") @db.Timestamp(6)
+  job        AnalysisJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("analysis_results")
+}
+
+model Embedding {
+  id              String                 @id @default(uuid()) @db.Uuid
+  chunkId         String                 @db.Uuid
+  userId          String                 @db.Uuid
+  model           String                 @db.VarChar(200)
+  dims            Int
+  vector          Unsupported("vector")? @map("vector")
+  vector_fallback Json?                  @map("vector_fallback")
+  metadata        Json?                  @map("metadata")
+  createdAt       DateTime               @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt       DateTime               @updatedAt @map("updated_at") @db.Timestamp(6)
+  chunk           DocumentChunk          @relation("ChunkEmbeddings", fields: [chunkId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([chunkId])
+  @@map("embeddings")
+}
+
+model PromptTemplate {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  name      String   @db.VarChar(200)
+  version   Int
+  template  String
+  metadata  Json?    @map("metadata")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  @@unique([userId, name, version])
+  @@index([userId])
+  @@map("prompt_templates")
+}
 
 enum LeaseStatus {
   PENDING
@@ -400,25 +412,13 @@ enum ObligationStatus {
 }
 
 enum DependencyType {
-  TRIGGERS      // Source obligation triggers target
-  BLOCKS        // Source obligation blocks target
-  MODIFIES      // Source obligation modifies target
-  REQUIRES      // Source obligation requires target
-  PRECEDES      // Source obligation must occur before target
-  CONFLICTS     // Source obligation conflicts with target
+  TRIGGERS
+  BLOCKS
+  MODIFIES
+  REQUIRES
+  PRECEDES
+  CONFLICTS
 }
-
-// ============================================
-// LANGUAGE INTELLIGENCE MODELS (DOCUMENTS, RAG, EMBEDDINGS, PROMPTS)
-// Notes:
-// - Preferred vector column uses the pgvector extension. Enable it in Postgres with:
-//     CREATE EXTENSION IF NOT EXISTS vector;
-// - The field below uses Prisma's Unsupported("vector") type to map to the PG `vector` type.
-//   If you cannot enable the extension, remove or comment the `vector` field and use
-//   the provided fallback `vector_fallback Float[] @db.Float8[]` instead.
-// - Indexing for pgvector (ivfflat / cosine / l2) must be created manually in migrations
-//   using a raw SQL migration after enabling the extension. Keep the vector field optional
-//   so smoke-tests and initial migrations work without forcing pgvector availability.
 
 enum JobStatus {
   PENDING
@@ -437,42 +437,15 @@ enum AnalysisType {
   OTHER
 }
 
-model Document {
-  id           String           @id @default(uuid()) @db.Uuid
-  userId       String           @db.Uuid
-  title        String?          @db.VarChar(500)
-  sourceUrl    String?          @map("source_url") @db.Text
-  sourceType   String?          @map("source_type") @db.VarChar(50) // FILE, URL, PASTE
-  content      String?          @map("content") @db.Text
-  metadata     Json?            @map("metadata")
-  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamp
-  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamp
-
-  // Relations
-  chunks       DocumentChunk[]  @relation("DocumentChunks")
-  analysisJobs AnalysisJob[]    @relation("DocumentAnalysisJobs")
-
-  @@index([userId, createdAt])
-  @@index([userId])
-  @@map("documents")
-}
-
-// ============================================
-// CONVERSATIONAL INTELLIGENCE MODELS
-// ============================================
-
 model ChatSession {
-  id          String    @id @default(uuid()) @db.Uuid
-  userId      String    @map("user_id") @db.Uuid
-  
-  // "Soft link" to a specific Contract or Lease context
-  contextId   String?   @map("context_id") @db.Uuid
-  contextType String?   @map("context_type") @db.VarChar(50) // e.g., "CONTRACT", "LEASE"
-  title       String?   @db.VarChar(255)
-  
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp
-  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamp
-  
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  contextId   String?  @map("context_id") @db.VarChar(255)
+  contextType String?  @map("context_type") @db.VarChar(50)
+  title       String   @default("New Conversation") @db.VarChar(255)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
   messages    Message[]
 
   @@index([userId])
@@ -483,118 +456,12 @@ model ChatSession {
 model Message {
   id            String      @id @default(uuid()) @db.Uuid
   chatSessionId String      @map("chat_session_id") @db.Uuid
-  
-  role          String      @db.VarChar(20) // "user" or "assistant"
-  content       String      @db.Text
-  
-  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamp
+  role          String      @db.VarChar(50)
+  content       String
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamp(6)
   
   chatSession   ChatSession @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
 
   @@index([chatSessionId])
   @@map("messages")
 }
-model DocumentChunk {
-  id           String           @id @default(uuid()) @db.Uuid
-  documentId   String           @db.Uuid
-  userId       String           @db.Uuid
-  chunkOrder   Int              @map("chunk_order")
-  text         String           @db.Text
-  tokenCount   Int?             @map("token_count")
-  startOffset  Int?             @map("start_offset")
-  endOffset    Int?             @map("end_offset")
-  metadata     Json?            @map("metadata")
-  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamp
-  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamp
-
-  // Relations
-  document     Document         @relation("DocumentChunks", fields: [documentId], references: [id], onDelete: Cascade)
-  embeddings   Embedding[]      @relation("ChunkEmbeddings")
-  analysisJobs AnalysisJob[]
-
-  @@unique([documentId, chunkOrder])
-  @@index([documentId])
-  @@index([userId])
-  @@map("document_chunks")
-}
-
-model AnalysisJob {
-  id            String        @id @default(uuid()) @db.Uuid
-  userId        String        @db.Uuid
-  documentId    String?       @db.Uuid
-  chunkId       String?       @db.Uuid
-  type          AnalysisType  @default(OTHER)
-  status        JobStatus     @default(PENDING)
-  input         Json?         @map("input")
-  promptSnapshot Json?        @map("prompt_snapshot") // store prompt or template snapshot
-  startedAt     DateTime?     @map("started_at") @db.Timestamp
-  completedAt   DateTime?     @map("completed_at") @db.Timestamp
-  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamp
-  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamp
-
-  // Relations
-  document      Document?     @relation("DocumentAnalysisJobs", fields: [documentId], references: [id], onDelete: Cascade)
-  chunk         DocumentChunk? @relation(fields: [chunkId], references: [id], onDelete: SetNull)
-  result        AnalysisResult?
-
-  @@index([userId, createdAt])
-  @@index([status])
-  @@index([documentId])
-  @@index([chunkId])
-  @@map("analysis_jobs")
-}
-
-model AnalysisResult {
-  id          String     @id @default(uuid()) @db.Uuid
-  jobId       String     @unique @map("job_id") @db.Uuid
-  userId      String     @db.Uuid
-  result      Json?      @map("result")
-  textOutput  String?    @map("text_output") @db.Text
-  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamp
-  updatedAt   DateTime   @updatedAt @map("updated_at") @db.Timestamp
-
-  // Relations
-  job         AnalysisJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@map("analysis_results")
-}
-
-model Embedding {
-  id           String    @id @default(uuid()) @db.Uuid
-  chunkId      String    @db.Uuid
-  userId       String    @db.Uuid
-  model        String    @db.VarChar(200)
-  dims         Int
-  // Preferred pgvector column (optional). Requires: CREATE EXTENSION IF NOT EXISTS vector;
-  vector       Unsupported("vector")? @map("vector")
-  // Fallback if pgvector is not available (use Json to store array of floats). Optional.
-  vector_fallback Json?    @map("vector_fallback")
-  metadata     Json?     @map("metadata")
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamp
-  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamp
-
-  // Relations
-  chunk        DocumentChunk @relation("ChunkEmbeddings", fields: [chunkId], references: [id], onDelete: Cascade)
-
-  @@index([userId, createdAt])
-  @@index([chunkId])
-  @@map("embeddings")
-}
-
-model PromptTemplate {
-  id          String   @id @default(uuid()) @db.Uuid
-  userId      String   @db.Uuid
-  name        String   @db.VarChar(200)
-  version     Int
-  template    String   @db.Text
-  metadata    Json?    @map("metadata")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamp
-
-  @@unique([userId, name, version])
-  @@index([userId])
-  @@map("prompt_templates")
-}
-
-

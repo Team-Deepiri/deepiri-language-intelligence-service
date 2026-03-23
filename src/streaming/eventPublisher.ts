@@ -1,4 +1,4 @@
-import { StreamingClient, StreamTopics, StreamEvent } from '@deepiri/shared-utils';
+import { StreamingClient, StreamTopics, StreamEvent, secureLog } from '@deepiri/shared-utils';
 import { config } from '../config/environment';
 import { logger } from '../utils/logger';
 import { broadcastEvent } from './socketBroadcaster';
@@ -13,9 +13,9 @@ export async function initializeEventPublisher(): Promise<void> {
       config.redis.password
     );
     await streamingClient.connect();
-    secureLog('info', '[Language Intelligence] Connected to Redis Streams');
+    logger.info('[Language Intelligence] Connected to Redis Streams');
   } catch (error: any) {
-    secureLog('error', '[Language Intelligence] Failed to initialize event publisher:', error);
+    logger.error('[Language Intelligence] Failed to initialize event publisher:', { error: error.message });
     throw error;
   }
 }
