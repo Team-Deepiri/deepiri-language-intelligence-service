@@ -14,10 +14,6 @@ COPY backend/deepiri-language-intelligence-service/.npmrc ./
 # Install dependencies
 RUN npm ci --legacy-peer-deps && npm cache clean --force
 
-# Install dependencies (including shared-utils as file dependency)
-RUN npm install --legacy-peer-deps file:/shared-utils && \
-    npm cache clean --force
-
 # Copy source code
 COPY backend/deepiri-language-intelligence-service/src ./src
 COPY backend/deepiri-language-intelligence-service/prisma ./prisma
