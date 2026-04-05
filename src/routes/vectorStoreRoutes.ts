@@ -237,7 +237,7 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const { collectionName } = req.params;
-      const { query: searchQuery, limit = 10, offset = 0 } = req.query;
+      const { query: searchQuery, limit = 10 } = req.query;
 
       if (searchQuery) {
         // Search documents
