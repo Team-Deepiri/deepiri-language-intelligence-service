@@ -206,7 +206,7 @@ router.delete(
       const { document_ids } = req.body;
 
       // Use Cyrex batch document deletion endpoint
-      const response = await cyrexClient.post('/api/v1/documents/delete/batch', { document_ids });
+      await cyrexClient.post('/api/v1/documents/delete/batch', { document_ids });
 
       res.json({
         success: true,
