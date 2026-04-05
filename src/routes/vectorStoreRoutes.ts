@@ -4,7 +4,7 @@ import axios from 'axios';
 import { config } from '../config/environment';
 import { secureLog } from '@deepiri/shared-utils';
 import { authenticate } from './middleware/auth';
-import { validate, commonValidations } from '../middleware/inputValidation';
+import { validate } from '../middleware/inputValidation';
 
 const router = Router();
 
