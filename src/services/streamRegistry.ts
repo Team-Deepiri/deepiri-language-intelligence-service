@@ -1,13 +1,9 @@
 import { streamConsumer } from './streamConsumerService';
 import {
-  handleLeaseCreated,
-  handleLeaseProcessed,
-  handleLeaseProcessingError,
-} from './leaseEventHandler';
-import {
-  handleContractCreated,
-  handleContractProcessed,
-} from './contractEventHandler';
+  handleDocumentCreated,
+  handleDocumentProcessed,
+  handleDocumentProcessingError,
+} from './documentEventHandler';
 import {
   handleObligationCreated,
   handleObligationUpdated,
@@ -15,14 +11,11 @@ import {
 } from './obligationEventHandler';
 
 export function registerStreamHandlers(): void {
-  streamConsumer.register('lease-created',          handleLeaseCreated);
-  streamConsumer.register('lease-processed',        handleLeaseProcessed);
-  streamConsumer.register('lease-processing-error', handleLeaseProcessingError);
+  streamConsumer.register('document-created', handleDocumentCreated);
+  streamConsumer.register('document-processed', handleDocumentProcessed);
+  streamConsumer.register('document-processing-error', handleDocumentProcessingError);
 
-  streamConsumer.register('contract-created',       handleContractCreated);
-  streamConsumer.register('contract-processed',     handleContractProcessed);
-
-  streamConsumer.register('obligation-created',     handleObligationCreated);
-  streamConsumer.register('obligation-updated',     handleObligationUpdated);
-  streamConsumer.register('obligation-deleted',     handleObligationDeleted);
+  streamConsumer.register('obligation-created', handleObligationCreated);
+  streamConsumer.register('obligation-updated', handleObligationUpdated);
+  streamConsumer.register('obligation-deleted', handleObligationDeleted);
 }

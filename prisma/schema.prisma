@@ -8,214 +8,34 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Lease {
-  id                   String         @id @default(uuid()) @db.Uuid
-  leaseNumber          String         @unique @db.VarChar(100)
-  tenantName           String         @map("tenant_name") @db.VarChar(255)
-  landlordName         String?        @map("landlord_name") @db.VarChar(255)
-  propertyAddress      String         @map("property_address") @db.VarChar(500)
-  propertyType         String?        @map("property_type") @db.VarChar(100)
-  squareFootage        Int?           @map("square_footage")
-  documentUrl          String         @map("document_url")
-  documentStorageKey   String?        @map("document_storage_key") @db.VarChar(255)
-  rawText              String?        @map("raw_text")
-  documentType         String         @default("PDF") @map("document_type") @db.VarChar(50)
-  fileSize             Int?           @map("file_size")
-  startDate            DateTime       @map("start_date") @db.Timestamp(6)
-  endDate              DateTime       @map("end_date") @db.Timestamp(6)
-  status               LeaseStatus    @default(PENDING)
-  processingStatus     String?        @map("processing_status") @db.VarChar(50)
-  processingError      String?        @map("processing_error")
-  processedAt          DateTime?      @map("processed_at") @db.Timestamp(6)
-  processingTimeMs     Int?           @map("processing_time_ms")
-  abstractedTerms      Json?          @map("abstracted_terms")
-  financialTerms       Json?          @map("financial_terms")
-  keyDates             Json?          @map("key_dates")
-  propertyDetails      Json?          @map("property_details")
-  keyClauses           Json?          @map("key_clauses")
-  extractionConfidence Float?         @map("extraction_confidence")
-  validationScore      Float?         @map("validation_score")
-  userId               String?        @map("user_id") @db.Uuid
-  organizationId       String?        @map("organization_id") @db.Uuid
-  tags                 String[]       @default([])
-  notes                String?
-  metadata             Json?          @default("{}")
-  createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt            DateTime       @updatedAt @map("updated_at") @db.Timestamp(6)
-  createdBy            String?        @map("created_by") @db.Uuid
-  updatedBy            String?        @map("updated_by") @db.Uuid
-  versions             LeaseVersion[]
-  obligations          Obligation[]
-
-  @@index([leaseNumber])
-  @@index([tenantName])
-  @@index([status])
-  @@index([userId])
-  @@index([organizationId])
-  @@index([startDate])
-  @@map("leases")
-}
-
-model LeaseVersion {
-  id                 String   @id @default(uuid()) @db.Uuid
-  leaseId            String   @map("lease_id") @db.Uuid
-  versionNumber      Int      @map("version_number")
-  documentUrl        String   @map("document_url")
-  rawText            String   @map("raw_text")
-  abstractedTerms    Json     @map("abstracted_terms")
-  changes            Json?
-  changeSummary      String?  @map("change_summary")
-  changeType         String?  @map("change_type") @db.VarChar(50)
-  significantChanges Boolean  @default(false) @map("significant_changes")
-  processedAt        DateTime @default(now()) @map("processed_at") @db.Timestamp(6)
-  processingTimeMs   Int?     @map("processing_time_ms")
-  metadata           Json?    @default("{}")
-  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamp(6)
-  createdBy          String?  @map("created_by") @db.Uuid
-  lease              Lease    @relation(fields: [leaseId], references: [id], onDelete: Cascade)
-
-  @@unique([leaseId, versionNumber])
-  @@index([leaseId])
-  @@index([versionNumber])
-  @@map("lease_versions")
-}
-
-model Contract {
-  id                   String                 @id @default(uuid()) @db.Uuid
-  contractNumber       String                 @unique @db.VarChar(100)
-  contractName         String                 @map("contract_name") @db.VarChar(255)
-  partyA               String                 @db.VarChar(255)
-  partyB               String                 @db.VarChar(255)
-  contractType         String?                @map("contract_type") @db.VarChar(100)
-  jurisdiction         String?                @db.VarChar(100)
-  effectiveDate        DateTime               @map("effective_date") @db.Timestamp(6)
-  expirationDate       DateTime?              @map("expiration_date") @db.Timestamp(6)
-  documentUrl          String                 @map("document_url")
-  documentStorageKey   String?                @map("document_storage_key") @db.VarChar(255)
-  rawText              String?                @map("raw_text")
-  documentType         String                 @default("PDF") @map("document_type") @db.VarChar(50)
-  fileSize             Int?                   @map("file_size")
-  status               ContractStatus         @default(PENDING)
-  processingStatus     String?                @map("processing_status") @db.VarChar(50)
-  processingError      String?                @map("processing_error")
-  processedAt          DateTime?              @map("processed_at") @db.Timestamp(6)
-  processingTimeMs     Int?                   @map("processing_time_ms")
-  abstractedTerms      Json?                  @map("abstracted_terms")
-  keyClauses           Json?                  @map("key_clauses")
-  financialTerms       Json?                  @map("financial_terms")
-  terminationTerms     Json?                  @map("termination_terms")
-  renewalTerms         Json?                  @map("renewal_terms")
-  extractionConfidence Float?                 @map("extraction_confidence")
-  validationScore      Float?                 @map("validation_score")
-  userId               String?                @map("user_id") @db.Uuid
-  organizationId       String?                @map("organization_id") @db.Uuid
-  tags                 String[]               @default([])
-  notes                String?
-  metadata             Json?                  @default("{}")
-  createdAt            DateTime               @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt            DateTime               @updatedAt @map("updated_at") @db.Timestamp(6)
-  createdBy            String?                @map("created_by") @db.Uuid
-  updatedBy            String?                @map("updated_by") @db.Uuid
-  clauses              Clause[]
-  versions             ContractVersion[]
-  dependencies         ObligationDependency[] @relation("SourceContract")
-  targetDependencies   ObligationDependency[] @relation("TargetContract")
-  obligations          Obligation[]
-
-  @@index([contractNumber])
-  @@index([partyA])
-  @@index([partyB])
-  @@index([status])
-  @@index([userId])
-  @@index([organizationId])
-  @@index([effectiveDate])
-  @@map("contracts")
-}
-
-model Clause {
-  id                String   @id @default(uuid()) @db.Uuid
-  contractId        String   @map("contract_id") @db.Uuid
-  clauseType        String   @map("clause_type") @db.VarChar(100)
-  clauseTitle       String?  @map("clause_title") @db.VarChar(255)
-  clauseText        String   @map("clause_text")
-  clauseSummary     String?  @map("clause_summary")
-  sectionNumber     String?  @map("section_number") @db.VarChar(50)
-  pageNumber        Int?     @map("page_number")
-  versionNumber     Int      @map("version_number")
-  previousVersionId String?  @map("previous_version_id") @db.Uuid
-  changes           Json?
-  changeType        String?  @map("change_type") @db.VarChar(50)
-  changeSummary     String?  @map("change_summary")
-  significantChange Boolean  @default(false) @map("significant_change")
-  extractedAt       DateTime @default(now()) @map("extracted_at") @db.Timestamp(6)
-  confidence        Float?
-  extractionMethod  String?  @map("extraction_method") @db.VarChar(50)
-  contract          Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
-  previousVersion   Clause?  @relation("ClauseVersions", fields: [previousVersionId], references: [id])
-  nextVersions      Clause[] @relation("ClauseVersions")
-
-  @@index([contractId, versionNumber])
-  @@index([clauseType])
-  @@index([versionNumber])
-  @@index([changeType])
-  @@map("clauses")
-}
-
-model ContractVersion {
-  id                 String   @id @default(uuid()) @db.Uuid
-  contractId         String   @map("contract_id") @db.Uuid
-  versionNumber      Int      @map("version_number")
-  documentUrl        String   @map("document_url")
-  rawText            String   @map("raw_text")
-  abstractedTerms    Json     @map("abstracted_terms")
-  changes            Json?
-  changeSummary      String?  @map("change_summary")
-  changeType         String?  @map("change_type") @db.VarChar(50)
-  significantChanges Boolean  @default(false) @map("significant_changes")
-  processedAt        DateTime @default(now()) @map("processed_at") @db.Timestamp(6)
-  processingTimeMs   Int?     @map("processing_time_ms")
-  metadata           Json?    @default("{}")
-  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamp(6)
-  createdBy          String?  @map("created_by") @db.Uuid
-  contract           Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
-
-  @@unique([contractId, versionNumber])
-  @@index([contractId])
-  @@index([versionNumber])
-  @@map("contract_versions")
-}
-
 model Obligation {
-  id                 String                 @id @default(uuid()) @db.Uuid
-  leaseId            String?                @map("lease_id") @db.Uuid
-  contractId         String?                @map("contract_id") @db.Uuid
-  description        String
-  obligationType     ObligationType         @map("obligation_type")
-  party              String                 @db.VarChar(50)
-  deadline           DateTime?              @db.Timestamp(6)
-  startDate          DateTime?              @map("start_date") @db.Timestamp(6)
-  endDate            DateTime?              @map("end_date") @db.Timestamp(6)
-  frequency          String?                @db.VarChar(50)
-  amount             Float?
-  currency           String?                @default("USD") @db.VarChar(10)
-  sourceClause       String?                @map("source_clause")
-  confidence         Float?
-  status             ObligationStatus       @default(PENDING)
-  completedAt        DateTime?              @map("completed_at") @db.Timestamp(6)
-  owner              String?                @db.VarChar(255)
-  ownerEmail         String?                @map("owner_email") @db.VarChar(255)
-  tags               String[]               @default([])
-  notes              String?
-  metadata           Json?                  @default("{}")
-  createdAt          DateTime               @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt          DateTime               @updatedAt @map("updated_at") @db.Timestamp(6)
-  sourceDependencies ObligationDependency[] @relation("SourceObligations")
-  targetDependencies ObligationDependency[] @relation("TargetObligations")
-  contract           Contract?              @relation(fields: [contractId], references: [id], onDelete: Cascade)
-  lease              Lease?                 @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  id                     String                 @id @default(uuid()) @db.Uuid
+  intelligenceDocumentId String?                @map("intelligence_document_id") @db.Uuid
+  description            String
+  obligationType         ObligationType         @map("obligation_type")
+  party                  String                 @db.VarChar(50)
+  deadline               DateTime?              @db.Timestamp(6)
+  startDate              DateTime?              @map("start_date") @db.Timestamp(6)
+  endDate                DateTime?              @map("end_date") @db.Timestamp(6)
+  frequency              String?                @db.VarChar(50)
+  amount                 Float?
+  currency               String?                @default("USD") @db.VarChar(10)
+  sourceSnippet          String?                @map("source_clause")
+  confidence             Float?
+  status                 ObligationStatus       @default(PENDING)
+  completedAt            DateTime?              @map("completed_at") @db.Timestamp(6)
+  owner                  String?                @db.VarChar(255)
+  ownerEmail             String?                @map("owner_email") @db.VarChar(255)
+  tags                   String[]               @default([])
+  notes                  String?
+  metadata               Json?                  @default("{}")
+  createdAt              DateTime               @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt              DateTime               @updatedAt @map("updated_at") @db.Timestamp(6)
+  sourceDependencies     ObligationDependency[] @relation("SourceObligations")
+  targetDependencies     ObligationDependency[] @relation("TargetObligations")
+  intelligenceDocument   IntelligenceDocument?  @relation(fields: [intelligenceDocumentId], references: [id], onDelete: Cascade)
 
-  @@index([leaseId])
-  @@index([contractId])
+  @@index([intelligenceDocumentId])
   @@index([status])
   @@index([deadline])
   @@index([obligationType])
@@ -229,13 +49,9 @@ model ObligationDependency {
   dependencyType     DependencyType @map("dependency_type")
   description        String?
   confidence         Float?
-  sourceClause       String?        @map("source_clause")
-  targetClause       String?        @map("target_clause")
+  sourceSnippet      String?        @map("source_clause")
+  targetSnippet      String?        @map("target_clause")
   triggerCondition   String?        @map("trigger_condition")
-  sourceContractId   String?        @map("source_contract_id") @db.Uuid
-  targetContractId   String?        @map("target_contract_id") @db.Uuid
-  sourceLeaseId      String?        @map("source_lease_id") @db.Uuid
-  targetLeaseId      String?        @map("target_lease_id") @db.Uuid
   discoveredAt       DateTime       @default(now()) @map("discovered_at") @db.Timestamp(6)
   discoveredBy       String?        @map("discovered_by") @db.VarChar(50)
   verified           Boolean        @default(false)
@@ -243,19 +59,86 @@ model ObligationDependency {
   verifiedBy         String?        @map("verified_by") @db.Uuid
   metadata           Json?          @default("{}")
   createdAt          DateTime       @default(now()) @map("created_at") @db.Timestamp(6)
-  sourceContract     Contract?      @relation("SourceContract", fields: [sourceContractId], references: [id])
   sourceObligation   Obligation     @relation("SourceObligations", fields: [sourceObligationId], references: [id], onDelete: Cascade)
-  targetContract     Contract?      @relation("TargetContract", fields: [targetContractId], references: [id])
   targetObligation   Obligation     @relation("TargetObligations", fields: [targetObligationId], references: [id], onDelete: Cascade)
 
   @@unique([sourceObligationId, targetObligationId])
   @@index([sourceObligationId])
   @@index([targetObligationId])
-  @@index([sourceContractId])
-  @@index([targetContractId])
   @@index([dependencyType])
   @@index([verified])
   @@map("obligation_dependencies")
+}
+
+/// Processed uploads: open-vocabulary `documentKind` and `intelligenceProfile` (maps to external pipeline URLs).
+model IntelligenceDocument {
+  id                   String                    @id @default(uuid()) @db.Uuid
+  documentKey          String                    @unique @map("document_key") @db.VarChar(200)
+  documentKind         String                    @map("document_kind") @db.VarChar(120)
+  intelligenceProfile  String                    @map("intelligence_profile") @db.VarChar(120)
+  profileHints         Json?                     @map("profile_hints")
+  documentUrl          String                    @map("document_url")
+  documentStorageKey   String?                   @map("document_storage_key") @db.VarChar(255)
+  rawText              String?                   @map("raw_text")
+  documentType         String                    @default("PDF") @map("document_type") @db.VarChar(50)
+  fileSize             Int?                      @map("file_size")
+  status               IntelligenceDocumentStatus @default(PENDING)
+  processingStatus     String?                   @map("processing_status") @db.VarChar(50)
+  processingError      String?                   @map("processing_error")
+  processedAt          DateTime?                 @map("processed_at") @db.Timestamp(6)
+  processingTimeMs     Int?                      @map("processing_time_ms")
+  abstractedTerms      Json?                     @map("abstracted_terms")
+  financialTerms       Json?                     @map("financial_terms")
+  keyDates             Json?                     @map("key_dates")
+  extractedSupplement  Json?                     @map("extracted_supplement")
+  structuredSegments   Json?                     @map("structured_segments")
+  terminationDetails   Json?                     @map("termination_details")
+  renewalDetails       Json?                     @map("renewal_details")
+  extractionConfidence Float?                    @map("extraction_confidence")
+  validationScore      Float?                    @map("validation_score")
+  userId               String?                   @map("user_id") @db.Uuid
+  organizationId       String?                   @map("organization_id") @db.Uuid
+  tags                 String[]                  @default([])
+  notes                String?
+  metadata             Json?                     @default("{}")
+  createdAt            DateTime                  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt            DateTime                  @updatedAt @map("updated_at") @db.Timestamp(6)
+  createdBy            String?                   @map("created_by") @db.Uuid
+  updatedBy            String?                   @map("updated_by") @db.Uuid
+  versions             IntelligenceDocumentVersion[]
+  obligations          Obligation[]
+
+  @@index([documentKey])
+  @@index([documentKind])
+  @@index([intelligenceProfile])
+  @@index([status])
+  @@index([userId])
+  @@index([organizationId])
+  @@map("unified_documents")
+}
+
+model IntelligenceDocumentVersion {
+  id                     String               @id @default(uuid()) @db.Uuid
+  intelligenceDocumentId String               @map("intelligence_document_id") @db.Uuid
+  versionNumber          Int                  @map("version_number")
+  documentUrl            String               @map("document_url")
+  rawText                String               @map("raw_text")
+  abstractedTerms        Json                 @map("abstracted_terms")
+  changes                Json?
+  changeSummary          String?              @map("change_summary")
+  changeType             String?              @map("change_type") @db.VarChar(50)
+  significantChanges     Boolean              @default(false) @map("significant_changes")
+  processedAt            DateTime             @default(now()) @map("processed_at") @db.Timestamp(6)
+  processingTimeMs       Int?                 @map("processing_time_ms")
+  metadata               Json?                @default("{}")
+  createdAt              DateTime             @default(now()) @map("created_at") @db.Timestamp(6)
+  createdBy              String?              @map("created_by") @db.Uuid
+  intelligenceDocument   IntelligenceDocument @relation(fields: [intelligenceDocumentId], references: [id], onDelete: Cascade)
+
+  @@unique([intelligenceDocumentId, versionNumber])
+  @@index([intelligenceDocumentId])
+  @@index([versionNumber])
+  @@map("unified_document_versions")
 }
 
 model Document {
@@ -369,15 +252,7 @@ model PromptTemplate {
   @@map("prompt_templates")
 }
 
-enum LeaseStatus {
-  PENDING
-  PROCESSING
-  COMPLETED
-  ERROR
-  ARCHIVED
-}
-
-enum ContractStatus {
+enum IntelligenceDocumentStatus {
   PENDING
   PROCESSING
   COMPLETED

@@ -1,7 +1,7 @@
 {
   "name": "deepiri-language-intelligence-service",
   "version": "1.0.0",
-  "description": "Language Intelligence Platform - Lease Abstraction & Contract Intelligence",
+  "description": "Language intelligence service — document processing and obligations",
   "main": "dist/index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
@@ -17,9 +17,8 @@
   },
   "keywords": [
     "language-intelligence",
-    "lease-abstraction",
-    "contract-intelligence",
-    "document-processing"
+    "document-processing",
+    "obligations"
   ],
   "author": "Deepiri",
   "license": "MIT",

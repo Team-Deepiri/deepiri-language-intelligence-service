@@ -3,8 +3,7 @@ import { logger } from '../utils/logger';
 import type { Obligation, Prisma } from '@prisma/client';
 
 export interface CreateObligationInput {
-  leaseId?: string;
-  contractId?: string;
+  intelligenceDocumentId?: string;
   description: string;
   obligationType: string;
   party?: string;
@@ -14,15 +13,14 @@ export interface CreateObligationInput {
   frequency?: string;
   amount?: number;
   currency?: string;
-  sourceClause?: string;
+  sourceSnippet?: string;
   confidence?: number;
   tags?: string[];
   notes?: string;
 }
 
 export interface ObligationFilters {
-  leaseId?: string;
-  contractId?: string;
+  intelligenceDocumentId?: string;
   status?: string;
   obligationType?: string;
   overdue?: boolean;
@@ -30,14 +28,9 @@ export interface ObligationFilters {
 }
 
 export class ObligationService {
-  /**
-   * Create obligation from abstraction result
-   */
   async createObligationsFromAbstraction(
-    leaseId: string | null,
-    contractId: string | null,
-    obligations: any[],
-    sourceType: 'lease' | 'contract' = 'lease'
+    intelligenceDocumentId: string,
+    obligations: any[]
   ): Promise<Obligation[]> {
     const createdObligations: Obligation[] = [];
 
@@ -45,8 +38,7 @@ export class ObligationService {
       try {
         const obligation = await prisma.obligation.create({
           data: {
-            leaseId: sourceType === 'lease' ? leaseId : null,
-            contractId: sourceType === 'contract' ? contractId : null,
+            intelligenceDocumentId,
             description: obl.description || '',
             obligationType: this._mapObligationType(obl.obligationType || obl.type) as any,
             party: this._mapParty(obl.party),
@@ -56,7 +48,7 @@ export class ObligationService {
             frequency: obl.frequency || obl.recurrencePattern || null,
             amount: obl.amount ? parseFloat(obl.amount.toString()) : null,
             currency: obl.currency || 'USD',
-            sourceClause: obl.sourceClause || obl.source || null,
+            sourceSnippet: obl.sourceSnippet || obl.source || null,
             confidence: obl.confidence || null,
             status: 'PENDING',
             tags: obl.tags || [],
@@ -67,8 +59,7 @@ export class ObligationService {
         createdObligations.push(obligation);
       } catch (error: any) {
         logger.error('Failed to create obligation', {
-          leaseId,
-          contractId,
+          intelligenceDocumentId,
           error: error.message,
           obligation: obl,
         });
@@ -76,42 +67,24 @@ export class ObligationService {
     }
 
     logger.info('Obligations created', {
-      leaseId,
-      contractId,
+      intelligenceDocumentId,
       count: createdObligations.length,
     });
 
     return createdObligations;
   }
 
-  /**
-   * Get obligations by lease ID
-   */
-  async getObligationsByLeaseId(leaseId: string): Promise<Obligation[]> {
+  async getObligationsByIntelligenceDocumentId(intelligenceDocumentId: string): Promise<Obligation[]> {
     return prisma.obligation.findMany({
-      where: { leaseId },
+      where: { intelligenceDocumentId },
       orderBy: { deadline: 'asc' },
     });
   }
 
-  /**
-   * Get obligations by contract ID
-   */
-  async getObligationsByContractId(contractId: string): Promise<Obligation[]> {
-    return prisma.obligation.findMany({
-      where: { contractId },
-      orderBy: { deadline: 'asc' },
-    });
-  }
-
-  /**
-   * Create a single obligation
-   */
   async createObligation(data: CreateObligationInput): Promise<Obligation> {
     return prisma.obligation.create({
       data: {
-        leaseId: data.leaseId || null,
-        contractId: data.contractId || null,
+        intelligenceDocumentId: data.intelligenceDocumentId || null,
         description: data.description,
         obligationType: this._mapObligationType(data.obligationType) as any,
         party: this._mapParty(data.party || ''),
@@ -121,7 +94,7 @@ export class ObligationService {
         frequency: data.frequency || null,
         amount: data.amount || null,
         currency: data.currency || 'USD',
-        sourceClause: data.sourceClause || null,
+        sourceSnippet: data.sourceSnippet || null,
         confidence: data.confidence || null,
         status: 'PENDING',
         tags: data.tags || [],
@@ -130,9 +103,6 @@ export class ObligationService {
     });
   }
 
-  /**
-   * Get an obligation by ID
-   */
   async getObligation(id: string): Promise<Obligation> {
     const obligation = await prisma.obligation.findUnique({
       where: { id },
@@ -143,10 +113,15 @@ export class ObligationService {
     return obligation;
   }
 
-  /**
-   * Update an obligation
-   */
-  async updateObligation(id: string, data: Partial<CreateObligationInput> & { status?: string, completedAt?: Date, owner?: string, ownerEmail?: string }): Promise<Obligation> {
+  async updateObligation(
+    id: string,
+    data: Partial<CreateObligationInput> & {
+      status?: string;
+      completedAt?: Date;
+      owner?: string;
+      ownerEmail?: string;
+    }
+  ): Promise<Obligation> {
     const updateData: any = { ...data };
     if (updateData.obligationType) {
       updateData.obligationType = this._mapObligationType(updateData.obligationType);
@@ -160,18 +135,12 @@ export class ObligationService {
     });
   }
 
-  /**
-   * Delete an obligation
-   */
   async deleteObligation(id: string): Promise<Obligation> {
     return prisma.obligation.delete({
       where: { id },
     });
   }
 
-  /**
-   * List dependencies
-   */
   async listDependencies(id: string, direction: 'source' | 'target' | 'both'): Promise<any[]> {
     const where: any = {};
     if (direction === 'source') {
@@ -179,28 +148,39 @@ export class ObligationService {
     } else if (direction === 'target') {
       where.sourceObligationId = id;
     } else {
-      where.OR = [
-        { sourceObligationId: id },
-        { targetObligationId: id },
-      ];
+      where.OR = [{ sourceObligationId: id }, { targetObligationId: id }];
     }
     return prisma.obligationDependency.findMany({
       where,
     });
   }
 
-  /**
-   * Create dependency
-   */
-  async createDependency(data: any): Promise<any> {
+  async createDependency(data: {
+    sourceObligationId: string;
+    targetObligationId: string;
+    dependencyType?: string;
+    description?: string;
+    confidence?: number;
+    sourceSnippet?: string;
+    targetSnippet?: string;
+    triggerCondition?: string;
+    discoveredBy?: string;
+  }): Promise<any> {
     return prisma.obligationDependency.create({
-      data,
+      data: {
+        sourceObligationId: data.sourceObligationId,
+        targetObligationId: data.targetObligationId,
+        dependencyType: (data.dependencyType as any) || 'TRIGGERS',
+        description: data.description,
+        confidence: data.confidence,
+        sourceSnippet: data.sourceSnippet,
+        targetSnippet: data.targetSnippet,
+        triggerCondition: data.triggerCondition,
+        discoveredBy: data.discoveredBy,
+      },
     });
   }
 
-  /**
-   * Delete dependency
-   */
   async deleteDependency(sourceId: string, targetId: string): Promise<any> {
     return prisma.obligationDependency.deleteMany({
       where: {
@@ -210,14 +190,10 @@ export class ObligationService {
     });
   }
 
-  /**
-   * List obligations with filters
-   */
   async listObligations(filters: ObligationFilters): Promise<Obligation[]> {
     const where: Prisma.ObligationWhereInput = {};
 
-    if (filters.leaseId) where.leaseId = filters.leaseId;
-    if (filters.contractId) where.contractId = filters.contractId;
+    if (filters.intelligenceDocumentId) where.intelligenceDocumentId = filters.intelligenceDocumentId;
     if (filters.status) where.status = filters.status as any;
     if (filters.obligationType) where.obligationType = filters.obligationType as any;
     if (filters.owner) where.owner = { contains: filters.owner, mode: 'insensitive' };
@@ -233,9 +209,6 @@ export class ObligationService {
     });
   }
 
-  /**
-   * Update obligation status
-   */
   async updateObligationStatus(
     obligationId: string,
     status: string,
@@ -250,9 +223,6 @@ export class ObligationService {
     });
   }
 
-  /**
-   * Assign obligation to owner
-   */
   async assignObligation(
     obligationId: string,
     owner: string,
@@ -291,16 +261,15 @@ export class ObligationService {
 
   private _mapParty(party: string): string {
     const mapping: Record<string, string> = {
-      TENANT: 'TENANT',
-      LANDLORD: 'LANDLORD',
+      PRIMARY: 'PRIMARY',
+      SECONDARY: 'SECONDARY',
       BOTH: 'BOTH',
-      PARTY_A: 'PARTY_A',
-      PARTY_B: 'PARTY_B',
+      OWNER: 'OWNER',
+      ASSIGNEE: 'ASSIGNEE',
     };
 
-    return mapping[party?.toUpperCase()] || 'TENANT';
+    return mapping[party?.toUpperCase()] || 'PRIMARY';
   }
 }
 
 export const obligationService = new ObligationService();
-

@@ -14,10 +14,8 @@ const router = Router();
 
 export enum CollectionType {
   REGULATORY_DOCUMENTS = 'regulatory_documents',
-  CONTRACTS = 'contracts',
-  LEASES = 'leases',
+  INTELLIGENCE_DOCUMENTS = 'intelligence_documents',
   OBLIGATIONS = 'obligations',
-  CLAUSES = 'clauses',
   COMPLIANCE_PATTERNS = 'compliance_patterns',
   VERSION_DRIFT = 'version_drift',
   KNOWLEDGE_BASE = 'knowledge_base',
@@ -25,10 +23,8 @@ export enum CollectionType {
 
 const COLLECTION_NAMES: Record<CollectionType, string> = {
   [CollectionType.REGULATORY_DOCUMENTS]: 'regulatory_documents',
-  [CollectionType.CONTRACTS]: 'contracts',
-  [CollectionType.LEASES]: 'leases',
+  [CollectionType.INTELLIGENCE_DOCUMENTS]: 'intelligence_documents',
   [CollectionType.OBLIGATIONS]: 'obligations',
-  [CollectionType.CLAUSES]: 'clauses',
   [CollectionType.COMPLIANCE_PATTERNS]: 'compliance_patterns',
   [CollectionType.VERSION_DRIFT]: 'version_drift',
   [CollectionType.KNOWLEDGE_BASE]: 'knowledge_base',
@@ -60,7 +56,7 @@ router.get(
     res.json({
       collection_types: Object.values(CollectionType),
       collections: COLLECTION_NAMES,
-      description: 'Available collections for Regulatory Contract Lease Language Intelligence Platform',
+      description: 'Available vector collections for language intelligence',
     });
   }
 );
@@ -169,7 +165,7 @@ router.post(
         document_id: metadata?.document_id,
         title: metadata?.title || 'Document',
         doc_type: collectionName,
-        industry: 'regulatory_contract_lease',
+        industry: 'language_intelligence',
         metadata: {
           ...metadata,
           collection_type: collectionName,
