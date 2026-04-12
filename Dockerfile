@@ -7,19 +7,19 @@ WORKDIR /app
 RUN apk add --no-cache curl openssl
 
 # Copy package files
-COPY backend/deepiri-language-intelligence-service/package*.json ./
-COPY backend/deepiri-language-intelligence-service/tsconfig.json ./
-COPY backend/deepiri-language-intelligence-service/.npmrc ./
+COPY package*.json ./
+COPY tsconfig.json ./
+COPY .npmrc ./
 
 # Install dependencies
 RUN npm ci --legacy-peer-deps && npm cache clean --force
 
 # Copy source code
-COPY backend/deepiri-language-intelligence-service/src ./src
-COPY backend/deepiri-language-intelligence-service/prisma ./prisma
+COPY src ./src
+COPY prisma ./prisma
 
 # Copy baseline migration script
-COPY --chown=root:root shared/scripts/prisma-baseline.sh /usr/local/bin/prisma-baseline.sh
+COPY --chown=root:root scripts/prisma-baseline.sh /usr/local/bin/prisma-baseline.sh
 RUN chmod +x /usr/local/bin/prisma-baseline.sh
 
 # Generate Prisma client
