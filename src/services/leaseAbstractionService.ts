@@ -3,7 +3,7 @@ import { cyrexClient } from './cyrexClient';
 import { documentService } from './documentService';
 import { obligationService } from './obligationService';
 import { eventPublisher } from '../streaming/eventPublisher';
-import { logger } from '@deepiri/shared-utils';
+import { logger } from '@team-deepiri/shared-utils';
 import type { Lease, LeaseVersion, Prisma } from '@prisma/client';
 
 export interface CreateLeaseInput {

@@ -8,7 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import routes from './routes';
 import { connectDatabase, prisma } from './db';
 import { initializeEventPublisher } from './streaming/eventPublisher';
-import { logger } from '@deepiri/shared-utils';
+import { logger } from '@team-deepiri/shared-utils';
 import { config } from './config/environment';
 import { validateBodyIfPresent } from './middleware/inputValidation';
 import { bodyParserConfig, requestSizeLimiter } from './middleware/requestLimits';

@@ -26,7 +26,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.490.0",
     "@aws-sdk/lib-storage": "^3.490.0",
-    "@deepiri/shared-utils": "^1.0.0",
+    "@team-deepiri/shared-utils": "^1.0.0",
     "@prisma/client": "^6.19.2",
     "axios": "^1.6.2",
     "cors": "^2.8.5",

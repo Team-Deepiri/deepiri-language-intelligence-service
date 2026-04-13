@@ -1,6 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import { config } from '../config/environment';
-import { secureLog } from '@deepiri/shared-utils';
+import { secureLog } from '@team-deepiri/shared-utils';
 
 export interface AbstractLeaseRequest {
   leaseId: string;
