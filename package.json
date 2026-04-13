@@ -13,7 +13,8 @@
     "prisma:db:push": "prisma db push",
     "prisma:baseline": "bash scripts/baseline-migration.sh",
     "prisma:studio": "prisma studio",
-    "smoke:test": "node scripts/smoke-test.js"
+    "smoke:test": "node scripts/smoke-test.js",
+    "test": "echo \"No tests yet\" && exit 0"
   },
   "keywords": [
     "language-intelligence",
