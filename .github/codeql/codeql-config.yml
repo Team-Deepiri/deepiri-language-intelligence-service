@@ -1,0 +1,16 @@
+name: deepiri-language-intelligence-service-codeql-config
+
+# Focus analysis on maintained service runtime and migration code.
+paths:
+  - src
+  - prisma
+  - scripts
+
+# Exclude generated/build/runtime artifact paths.
+paths-ignore:
+  - '**/node_modules/**'
+  - '**/dist/**'
+  - '**/build/**'
+  - '**/coverage/**'
+  - '**/logs/**'
+  - '**/*.min.js'
