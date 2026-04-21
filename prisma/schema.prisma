@@ -465,3 +465,32 @@ model Message {
   @@index([chatSessionId])
   @@map("messages")
 }
+
+model IntelligenceDocument {
+  id                 String    @id @default(uuid()) @db.Uuid
+  userId             String    @map("user_id") @db.Uuid
+  organizationId     String?   @map("organization_id") @db.Uuid
+  title              String?   @db.VarChar(500)
+  documentUrl        String    @map("document_url")
+  documentStorageKey String    @map("document_storage_key") @db.VarChar(255)
+  rawText            String?   @map("raw_text")
+  documentType       String?   @map("document_type") @db.VarChar(100)
+  fileSize           Int?      @map("file_size")
+  mimeType           String?   @map("mime_type") @db.VarChar(100)
+  status             String    @default("PENDING") @db.VarChar(50)
+  processingError    String?   @map("processing_error")
+  processedAt        DateTime? @map("processed_at") @db.Timestamp(6)
+  processingTimeMs   Int?      @map("processing_time_ms")
+  destinations       String[]  @default([])
+  qualityScore       Float?    @map("quality_score")
+  routedAt           DateTime? @map("routed_at") @db.Timestamp(6)
+  routingManifest    Json?     @map("routing_manifest")
+  metadata           Json?     @default("{}")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([status])
+  @@map("intelligence_documents")
+}

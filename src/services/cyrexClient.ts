@@ -41,6 +41,24 @@ export interface FindCascadingObligationsRequest {
   maxDepth?: number;
 }
 
+export interface ProcessAndRouteRequest {
+  documentId: string;
+  text: string;
+  metadata: Record<string, any>;
+  minioPath: string;
+  orgId: string;
+}
+
+export interface RoutingManifest {
+  documentId: string;
+  destinations: string[];
+  qualityScore: number | null;
+  chunks: any[] | null;
+  structuredOutput: Record<string, any> | null;
+  trainingPayload: Record<string, any> | null;
+  embeddingModel: string;
+}
+
 export class CyrexClient {
   private client: AxiosInstance;
 
@@ -191,6 +209,28 @@ export class CyrexClient {
     } catch (error: any) {
       secureLog('error', 'Cyrex lease version comparison failed', { error: error.message });
       throw new Error(`Lease version comparison failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Process and route document
+   */
+  async processAndRoute(request: ProcessAndRouteRequest): Promise<RoutingManifest> {
+    try {
+      secureLog('info', 'Calling Cyrex process and route', { documentId: request.documentId });
+      
+      const response = await this.client.post(
+        '/language-intelligence/documents/process-and-route',
+        request
+      );
+      
+      return response.data;
+    } catch (error: any) {
+      secureLog('error', 'Cyrex process and route failed', {
+        documentId: request.documentId,
+        error: error.message,
+      });
+      throw new Error(`Process and route failed: ${error.message}`);
     }
   }
 }
