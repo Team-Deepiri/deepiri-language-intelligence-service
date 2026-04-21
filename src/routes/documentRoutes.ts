@@ -180,8 +180,8 @@ router.get(
 
 router.get(
   '/:id/versions',
-  authenticate,
   versionsFetchRateLimiter,
+  authenticate,
   validate([param('id').isUUID().withMessage('Invalid document ID format')]),
   async (req: Request, res: Response) => {
     try {
