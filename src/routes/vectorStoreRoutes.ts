@@ -1,12 +1,21 @@
 import { Router, Request, Response } from 'express';
 import { param, body, query } from 'express-validator';
 import axios from 'axios';
+import rateLimit from 'express-rate-limit';
 import { config } from '../config/environment';
 import { secureLog } from '@deepiri/shared-utils';
 import { authenticate } from './middleware/auth';
-import { validate, commonValidations } from '../middleware/inputValidation';
+import { validate } from '../middleware/inputValidation';
 
 const router = Router();
+
+const documentSearchRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please try again later.' },
+});
 
 // ============================================================================
 // Collection Types for Language Intelligence Platform
@@ -14,10 +23,8 @@ const router = Router();
 
 export enum CollectionType {
   REGULATORY_DOCUMENTS = 'regulatory_documents',
-  CONTRACTS = 'contracts',
-  LEASES = 'leases',
+  INTELLIGENCE_DOCUMENTS = 'intelligence_documents',
   OBLIGATIONS = 'obligations',
-  CLAUSES = 'clauses',
   COMPLIANCE_PATTERNS = 'compliance_patterns',
   VERSION_DRIFT = 'version_drift',
   KNOWLEDGE_BASE = 'knowledge_base',
@@ -25,10 +32,8 @@ export enum CollectionType {
 
 const COLLECTION_NAMES: Record<CollectionType, string> = {
   [CollectionType.REGULATORY_DOCUMENTS]: 'regulatory_documents',
-  [CollectionType.CONTRACTS]: 'contracts',
-  [CollectionType.LEASES]: 'leases',
+  [CollectionType.INTELLIGENCE_DOCUMENTS]: 'intelligence_documents',
   [CollectionType.OBLIGATIONS]: 'obligations',
-  [CollectionType.CLAUSES]: 'clauses',
   [CollectionType.COMPLIANCE_PATTERNS]: 'compliance_patterns',
   [CollectionType.VERSION_DRIFT]: 'version_drift',
   [CollectionType.KNOWLEDGE_BASE]: 'knowledge_base',
@@ -54,13 +59,14 @@ const cyrexClient = axios.create({
  */
 router.get(
   '/collections/types',
+  documentSearchRateLimiter,
   authenticate,
   validate([]),
   (req: Request, res: Response) => {
     res.json({
       collection_types: Object.values(CollectionType),
       collections: COLLECTION_NAMES,
-      description: 'Available collections for Regulatory Contract Lease Language Intelligence Platform',
+      description: 'Available vector collections for language intelligence',
     });
   }
 );
@@ -71,6 +77,7 @@ router.get(
  */
 router.get(
   '/collections',
+  documentSearchRateLimiter,
   authenticate,
   validate([]),
   async (req: Request, res: Response) => {
@@ -90,6 +97,7 @@ router.get(
  */
 router.get(
   '/collections/:collectionName/stats',
+  documentSearchRateLimiter,
   authenticate,
   validate([param('collectionName').notEmpty().isString()]),
   async (req: Request, res: Response) => {
@@ -169,7 +177,7 @@ router.post(
         document_id: metadata?.document_id,
         title: metadata?.title || 'Document',
         doc_type: collectionName,
-        industry: 'regulatory_contract_lease',
+        industry: 'language_intelligence',
         metadata: {
           ...metadata,
           collection_type: collectionName,
@@ -210,7 +218,7 @@ router.delete(
       const { document_ids } = req.body;
 
       // Use Cyrex batch document deletion endpoint
-      const response = await cyrexClient.post('/api/v1/documents/delete/batch', { document_ids });
+      await cyrexClient.post('/api/v1/documents/delete/batch', { document_ids });
 
       res.json({
         success: true,
@@ -232,6 +240,7 @@ router.delete(
 router.get(
   '/collections/:collectionName/documents',
   authenticate,
+  documentSearchRateLimiter,
   validate([
     param('collectionName').notEmpty().isString(),
     query('query').optional().isString(),
@@ -241,7 +250,7 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const { collectionName } = req.params;
-      const { query: searchQuery, limit = 10, offset = 0 } = req.query;
+      const { query: searchQuery, limit = 10 } = req.query;
 
       if (searchQuery) {
         // Search documents
@@ -280,6 +289,7 @@ router.get(
 router.post(
   '/collections/:collectionName/documents/search',
   authenticate,
+  documentSearchRateLimiter,
   validate([
     param('collectionName').notEmpty().isString(),
     body('query').notEmpty().isString(),

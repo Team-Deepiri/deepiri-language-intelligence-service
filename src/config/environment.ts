@@ -28,6 +28,9 @@ export const config = {
   cyrex: {
     baseUrl: process.env.CYREX_BASE_URL || 'http://localhost:8000',
     apiKey: process.env.CYREX_API_KEY || '',
+    /** POST path for pipeline A (e.g. /language-intelligence/...); empty = skip remote abstract */
+    pipelinePathA: process.env.CYREX_PIPELINE_A_PATH || '',
+    pipelinePathB: process.env.CYREX_PIPELINE_B_PATH || '',
   },
 
   // Auth is handled by API Gateway - this service just reads user context from headers

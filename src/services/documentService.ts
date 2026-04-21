@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { config } from '../config/environment';
 import { logger } from '@deepiri/shared-utils';
@@ -6,6 +6,8 @@ import { v4 as uuidv4 } from 'uuid';
 import * as path from 'path';
 import * as mime from 'mime-types';
 import axios from 'axios';
+import pdfParse from 'pdf-parse';
+import mammoth from 'mammoth';
 
 export interface UploadResult {
   url: string;
@@ -96,55 +98,112 @@ export class DocumentService {
   }
 
   /**
-   * Extract text from document
-   * Calls Cyrex for text extraction (OCR/PDF parsing)
+   * Download a file from storage into a Buffer using the S3 client.
+   * Derives the storage key from the documentUrl.
+   */
+  private async downloadBuffer(documentUrl: string): Promise<Buffer> {
+    // Derive storage key: strip endpoint + bucket prefix from the full URL
+    const prefix = `${config.storage.endpoint}/${config.storage.bucket}/`;
+    const storageKey = documentUrl.startsWith(prefix)
+      ? documentUrl.slice(prefix.length)
+      : documentUrl.replace(/^https?:\/\/[^/]+\/[^/]+\//, '');
+
+    const command = new GetObjectCommand({ Bucket: this.bucket, Key: storageKey });
+    const response = await this.s3Client.send(command);
+    if (!response.Body) throw new Error('Empty response from storage');
+
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks);
+  }
+
+  /**
+   * Extract text locally using pdf-parse (PDF), mammoth (DOCX), or direct read (plain text).
+   * Returns null when the file type is not handled locally (e.g. images).
+   */
+  private async extractTextLocal(documentUrl: string): Promise<string | null> {
+    const urlLower = documentUrl.toLowerCase().split('?')[0];
+
+    const isPdf = urlLower.endsWith('.pdf');
+    const isDocx = urlLower.endsWith('.docx') || urlLower.endsWith('.doc');
+    const isPlain =
+      urlLower.endsWith('.txt') ||
+      urlLower.endsWith('.md') ||
+      urlLower.endsWith('.csv') ||
+      urlLower.endsWith('.json');
+
+    if (!isPdf && !isDocx && !isPlain) return null;
+
+    const buffer = await this.downloadBuffer(documentUrl);
+
+    if (isPlain) {
+      return buffer.toString('utf-8');
+    }
+
+    if (isPdf) {
+      const result = await pdfParse(buffer);
+      return result.text || '';
+    }
+
+    if (isDocx) {
+      const result = await mammoth.extractRawText({ buffer });
+      return result.value || '';
+    }
+
+    return null;
+  }
+
+  /**
+   * Extract text from a document.
+   * Tries local extraction first (pdf-parse / mammoth / plain-text read).
+   * Falls back to Cyrex for image/OCR types or when local extraction fails.
+   * If Cyrex is also unavailable, returns an empty string so processing can continue.
    */
   async extractText(documentUrl: string, documentType?: string): Promise<string> {
+    logger.info('Extracting text from document', { documentUrl, documentType });
+
+    // Try local extraction — works offline, no Cyrex needed for common types
     try {
-      logger.info('Extracting text from document', { documentUrl, documentType });
-      
-      // Determine document type from URL if not provided
-      if (!documentType) {
-        const urlLower = documentUrl.toLowerCase();
-        if (urlLower.endsWith('.pdf')) {
-          documentType = 'pdf';
-        } else if (urlLower.endsWith('.docx') || urlLower.endsWith('.doc')) {
-          documentType = 'docx';
-        } else if (urlLower.match(/\.(jpg|jpeg|png|gif|bmp)$/)) {
-          documentType = 'image';
-        } else {
-          documentType = 'pdf'; // Default
-        }
+      const localText = await this.extractTextLocal(documentUrl);
+      if (localText !== null) {
+        logger.info('Text extracted locally', { documentUrl, length: localText.length });
+        return localText;
       }
-      
-      // Call Cyrex document extraction API
+    } catch (localError: any) {
+      logger.warn('Local text extraction failed, falling back to Cyrex', {
+        documentUrl,
+        error: localError.message,
+      });
+    }
+
+    // Cyrex fallback (OCR / complex types)
+    try {
+      const urlLower = documentUrl.toLowerCase();
+      const resolvedType =
+        documentType ||
+        (urlLower.endsWith('.pdf') ? 'pdf' :
+         urlLower.endsWith('.docx') || urlLower.endsWith('.doc') ? 'docx' :
+         urlLower.match(/\.(jpg|jpeg|png|gif|bmp)$/) ? 'image' : 'pdf');
+
       const response = await axios.post(
         `${config.cyrex.baseUrl}/document-extraction/extract-text`,
-        { 
-          documentUrl,
-          documentType: documentType || 'pdf'
-        },
+        { documentUrl, documentType: resolvedType },
         {
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': config.cyrex.apiKey,
-          },
-          timeout: 120000, // 2 minutes for large documents
+          headers: { 'Content-Type': 'application/json', 'x-api-key': config.cyrex.apiKey },
+          timeout: 120000,
         }
       );
 
-      if (!response.data.success) {
-        throw new Error(response.data.error || 'Text extraction failed');
-      }
-
+      if (!response.data.success) throw new Error(response.data.error || 'Cyrex extraction failed');
       return response.data.text || '';
-    } catch (error: any) {
-      logger.error('Failed to extract text', {
+    } catch (cyrexError: any) {
+      logger.warn('Cyrex text extraction unavailable, continuing with empty text', {
         documentUrl,
-        documentType,
-        error: error.message,
+        error: cyrexError.message,
       });
-      throw new Error(`Text extraction failed: ${error.message}`);
+      return '';
     }
   }
 

@@ -37,19 +37,3 @@ COPY --chown=root:root shared/scripts/prisma-baseline.sh /usr/local/bin/prisma-b
 RUN chmod +x /usr/local/bin/prisma-baseline.sh
 
 # Generate Prisma client
-# Binary target is specified in schema.prisma for Alpine compatibility
-RUN npx prisma generate
-
-# Build TypeScript
-RUN npm run build
-
-# Expose port
-EXPOSE 5003
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:5003/health || exit 1
-
-# Start server
-CMD ["npm", "start"]
-

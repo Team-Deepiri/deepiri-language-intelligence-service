@@ -1,4 +1,9 @@
-import { StreamingClient, StreamTopics, StreamEvent, secureLog } from '@deepiri/shared-utils';
+import {
+  StreamingClient,
+  StreamTopics,
+  StreamEvent,
+  type DocumentIngestionRecordPayload,
+} from '@deepiri/shared-utils';
 import { config } from '../config/environment';
 import { logger } from '../utils/logger';
 import { broadcastEvent } from './socketBroadcaster';
@@ -27,177 +32,100 @@ async function publishEvent(event: StreamEvent): Promise<void> {
   broadcastEvent(event.event, event);
 }
 
-export async function publishLeaseCreated(leaseId: string, leaseNumber: string): Promise<void> {
-  const event: StreamEvent = {
-    event: 'lease-created',
-    timestamp: new Date().toISOString(),
-    source: 'language-intelligence-service',
-    service: 'language-intelligence',
-    action: 'lease-created',
-    data: { leaseId, leaseNumber },
-  };
-
-  await publishEvent(event);
-  logger.info(`[Language Intelligence] Published lease-created: ${leaseId}`);
+async function publishIngestionEvent(event: StreamEvent): Promise<void> {
+  if (!streamingClient) await initializeEventPublisher();
+  await streamingClient!.publish(StreamTopics.INGESTION_EVENTS, event);
 }
 
-export async function publishLeaseProcessed(
-  leaseId: string,
-  metadata: { processingTimeMs: number; confidence: number }
+export async function publishDocumentCreated(
+  documentId: string,
+  documentKey: string,
+  meta?: { documentKind?: string; intelligenceProfile?: string }
 ): Promise<void> {
   const event: StreamEvent = {
-    event: 'lease-processed',
+    event: 'document-created',
     timestamp: new Date().toISOString(),
     source: 'language-intelligence-service',
     service: 'language-intelligence',
-    action: 'lease-processed',
-    data: { leaseId, ...metadata },
+    action: 'document-created',
+    data: { documentId, documentKey, ...meta },
   };
-
   await publishEvent(event);
-  logger.info(`[Language Intelligence] Published lease-processed: ${leaseId}`);
+  logger.info(`[Language Intelligence] Published document-created: ${documentId}`);
 }
 
-export async function publishLeaseProcessingError(
-  leaseId: string,
-  error: string
+export async function publishDocumentProcessed(
+  documentId: string,
+  metadata: {
+    processingTimeMs: number;
+    confidence: number;
+    documentKind?: string;
+    intelligenceProfile?: string;
+  }
 ): Promise<void> {
   const event: StreamEvent = {
-    event: 'lease-processing-error',
+    event: 'document-processed',
     timestamp: new Date().toISOString(),
     source: 'language-intelligence-service',
     service: 'language-intelligence',
-    action: 'lease-processing-error',
-    data: { leaseId, error },
+    action: 'document-processed',
+    data: { documentId, ...metadata },
   };
-
   await publishEvent(event);
-  logger.error(`[Language Intelligence] Published lease-processing-error: ${leaseId}`);
+  logger.info(`[Language Intelligence] Published document-processed: ${documentId}`);
 }
 
-export async function publishLeaseVersionCreated(
-  leaseId: string,
+export async function publishDocumentProcessingError(documentId: string, error: string): Promise<void> {
+  const event: StreamEvent = {
+    event: 'document-processing-error',
+    timestamp: new Date().toISOString(),
+    source: 'language-intelligence-service',
+    service: 'language-intelligence',
+    action: 'document-processing-error',
+    data: { documentId, error },
+  };
+  await publishEvent(event);
+  logger.error(`[Language Intelligence] Published document-processing-error: ${documentId}`);
+}
+
+export async function publishDocumentVersionCreated(
+  documentId: string,
   versionId: string,
   versionNumber: number
 ): Promise<void> {
   const event: StreamEvent = {
-    event: 'lease-version-created',
+    event: 'document-version-created',
     timestamp: new Date().toISOString(),
     source: 'language-intelligence-service',
     service: 'language-intelligence',
-    action: 'lease-version-created',
-    data: { leaseId, versionId, versionNumber },
+    action: 'document-version-created',
+    data: { documentId, versionId, versionNumber },
   };
-
   await publishEvent(event);
-  logger.info(`[Language Intelligence] Published lease-version-created: ${versionId}`);
+  logger.info(`[Language Intelligence] Published document-version-created: ${versionId}`);
 }
 
-export async function publishContractCreated(contractId: string, contractNumber: string): Promise<void> {
-  const event: StreamEvent = {
-    event: 'contract-created',
-    timestamp: new Date().toISOString(),
-    source: 'language-intelligence-service',
-    service: 'language-intelligence',
-    action: 'contract-created',
-    data: { contractId, contractNumber },
-  };
-
-  await publishEvent(event);
-  logger.info(`[Language Intelligence] Published contract-created: ${contractId}`);
-}
-
-export async function publishContractProcessed(
-  contractId: string,
-  metadata?: { processingTimeMs?: number; confidence?: number }
+export async function publishDocumentIngestionRecord(
+  payload: DocumentIngestionRecordPayload,
+  correlationId?: string
 ): Promise<void> {
   const event: StreamEvent = {
-    event: 'contract-processed',
+    event: 'document-ingestion-record',
     timestamp: new Date().toISOString(),
     source: 'language-intelligence-service',
     service: 'language-intelligence',
-    action: 'contract-processed',
-    data: { contractId, ...(metadata || {}) },
+    action: 'document-ingestion-record',
+    correlation_id: correlationId,
+    data: payload,
   };
-
-  await publishEvent(event);
-  logger.info(`[Language Intelligence] Published contract-processed: ${contractId}`);
-}
-
-export async function publishContractProcessingError(
-  contractId: string,
-  error: string
-): Promise<void> {
-  const event: StreamEvent = {
-    event: 'contract-processing-error',
-    timestamp: new Date().toISOString(),
-    source: 'language-intelligence-service',
-    service: 'language-intelligence',
-    action: 'contract-processing-error',
-    data: { contractId, error },
-  };
-
-  await publishEvent(event);
-  logger.error(`[Language Intelligence] Published contract-processing-error: ${contractId}`);
-}
-
-export async function publishContractVersionCreated(
-  contractId: string,
-  versionId: string,
-  versionNumber: number
-): Promise<void> {
-  const event: StreamEvent = {
-    event: 'contract-version-created',
-    timestamp: new Date().toISOString(),
-    source: 'language-intelligence-service',
-    service: 'language-intelligence',
-    action: 'contract-version-created',
-    data: { contractId, versionId, versionNumber },
-  };
-
-  await publishEvent(event);
-  logger.info(`[Language Intelligence] Published contract-version-created: ${versionId}`);
-}
-
-export async function publishClauseEvolutionTracked(
-  contractId: string,
-  metadata: { fromVersion: number; toVersion: number; changesCount: number }
-): Promise<void> {
-  const event: StreamEvent = {
-    event: 'clause-evolution-tracked',
-    timestamp: new Date().toISOString(),
-    source: 'language-intelligence-service',
-    service: 'language-intelligence',
-    action: 'clause-evolution-tracked',
-    data: { contractId, ...metadata },
-  };
-
-  await publishEvent(event);
-  logger.info(`[Language Intelligence] Published clause-evolution-tracked: ${contractId}`);
-}
-
-export async function publishDependencyGraphBuilt(
-  contractId: string,
-  metadata: { nodeCount: number; edgeCount: number; cascadeRisks: number }
-): Promise<void> {
-  const event: StreamEvent = {
-    event: 'dependency-graph-built',
-    timestamp: new Date().toISOString(),
-    source: 'language-intelligence-service',
-    service: 'language-intelligence',
-    action: 'dependency-graph-built',
-    data: { contractId, ...metadata },
-  };
-
-  await publishEvent(event);
-  logger.info(`[Language Intelligence] Published dependency-graph-built: ${contractId}`);
+  await publishIngestionEvent(event);
+  logger.info(`[Language Intelligence] Published document-ingestion-record: ${payload.documentId}`);
 }
 
 export async function publishObligationCreated(
   obligationId: string,
   metadata?: {
-    leaseId?: string;
-    contractId?: string;
+    intelligenceDocumentId?: string;
     status?: string;
     obligationType?: string;
     owner?: string;
@@ -219,8 +147,7 @@ export async function publishObligationCreated(
 export async function publishObligationUpdated(
   obligationId: string,
   metadata?: {
-    leaseId?: string;
-    contractId?: string;
+    intelligenceDocumentId?: string;
     status?: string;
     obligationType?: string;
     owner?: string;
@@ -241,7 +168,7 @@ export async function publishObligationUpdated(
 
 export async function publishObligationDeleted(
   obligationId: string,
-  metadata?: { leaseId?: string; contractId?: string }
+  metadata?: { intelligenceDocumentId?: string }
 ): Promise<void> {
   const event: StreamEvent = {
     event: 'obligation-deleted',
@@ -296,16 +223,11 @@ export async function publishDependencyDeleted(
 }
 
 export const eventPublisher = {
-  publishLeaseCreated,
-  publishLeaseProcessed,
-  publishLeaseProcessingError,
-  publishLeaseVersionCreated,
-  publishContractCreated,
-  publishContractProcessed,
-  publishContractProcessingError,
-  publishContractVersionCreated,
-  publishClauseEvolutionTracked,
-  publishDependencyGraphBuilt,
+  publishDocumentCreated,
+  publishDocumentProcessed,
+  publishDocumentProcessingError,
+  publishDocumentVersionCreated,
+  publishDocumentIngestionRecord,
   publishObligationCreated,
   publishObligationUpdated,
   publishObligationDeleted,

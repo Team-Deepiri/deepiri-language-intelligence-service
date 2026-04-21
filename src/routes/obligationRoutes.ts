@@ -16,8 +16,7 @@ router.get(
     authenticate,
     requireRole('admin', 'moderator', 'developer', 'user'),
     [
-        query('leaseId').optional().isUUID(),
-        query('contractId').optional().isUUID(),
+        query('intelligenceDocumentId').optional().isUUID(),
         query('status').optional().isString(),
         query('obligationType').optional().isString(),
         query('overdue').optional().isBoolean().toBoolean(),
@@ -27,8 +26,7 @@ router.get(
     async (req: Request, res: Response) => {
         try {
             const obligations = await obligationService.listObligations({
-                leaseId: req.query.leaseId as string | undefined,
-                contractId: req.query.contractId as string | undefined,
+                intelligenceDocumentId: req.query.intelligenceDocumentId as string | undefined,
                 status: req.query.status as string | undefined,
                 obligationType: req.query.obligationType as string | undefined,
                 overdue: req.query.overdue as boolean | undefined,
@@ -53,8 +51,7 @@ router.post(
     authenticate,
     requireRole('admin', 'developer'),
     [
-        body('leaseId').optional().isUUID(),
-        body('contractId').optional().isUUID(),
+        body('intelligenceDocumentId').optional().isUUID(),
         body('description').notEmpty().isString(),
         body('obligationType').notEmpty().isString(),
         body('party').optional().isString(),
@@ -64,7 +61,7 @@ router.post(
         body('frequency').optional().isString(),
         body('amount').optional().isNumeric(),
         body('currency').optional().isString(),
-        body('sourceClause').optional().isString(),
+        body('sourceSnippet').optional().isString(),
         body('confidence').optional().isFloat({ min: 0, max: 1 }),
         body('tags').optional().isArray(),
         body('notes').optional().isString(),
@@ -72,15 +69,8 @@ router.post(
     handleValidationErrors,
     async (req: Request, res: Response) => {
         try {
-            if (!req.body.leaseId && !req.body.contractId) {
-                return res.status(400).json({
-                    error: 'Either leaseId or contractId is required',
-                });
-            }
-
             const obligation = await obligationService.createObligation({
-                leaseId: req.body.leaseId,
-                contractId: req.body.contractId,
+                intelligenceDocumentId: req.body.intelligenceDocumentId,
                 description: req.body.description,
                 obligationType: req.body.obligationType,
                 party: req.body.party,
@@ -90,7 +80,7 @@ router.post(
                 frequency: req.body.frequency,
                 amount: req.body.amount !== undefined ? Number(req.body.amount) : undefined,
                 currency: req.body.currency,
-                sourceClause: req.body.sourceClause,
+                sourceSnippet: req.body.sourceSnippet,
                 confidence: req.body.confidence !== undefined ? Number(req.body.confidence) : undefined,
                 tags: req.body.tags,
                 notes: req.body.notes,
@@ -203,13 +193,9 @@ router.post(
         body('dependencyType').optional().isString(),
         body('description').optional().isString(),
         body('confidence').optional().isFloat({ min: 0, max: 1 }),
-        body('sourceClause').optional().isString(),
-        body('targetClause').optional().isString(),
+        body('sourceSnippet').optional().isString(),
+        body('targetSnippet').optional().isString(),
         body('triggerCondition').optional().isString(),
-        body('sourceContractId').optional().isUUID(),
-        body('targetContractId').optional().isUUID(),
-        body('sourceLeaseId').optional().isUUID(),
-        body('targetLeaseId').optional().isUUID(),
         body('discoveredBy').optional().isString(),
     ],
     handleValidationErrors,
@@ -221,13 +207,9 @@ router.post(
                 dependencyType: req.body.dependencyType,
                 description: req.body.description,
                 confidence: req.body.confidence !== undefined ? Number(req.body.confidence) : undefined,
-                sourceClause: req.body.sourceClause,
-                targetClause: req.body.targetClause,
+                sourceSnippet: req.body.sourceSnippet,
+                targetSnippet: req.body.targetSnippet,
                 triggerCondition: req.body.triggerCondition,
-                sourceContractId: req.body.sourceContractId,
-                targetContractId: req.body.targetContractId,
-                sourceLeaseId: req.body.sourceLeaseId,
-                targetLeaseId: req.body.targetLeaseId,
                 discoveredBy: req.body.discoveredBy,
             });
 
@@ -276,8 +258,7 @@ router.patch(
     requireRole('admin', 'developer'),
     [
         param('id').isUUID(),
-        body('leaseId').optional().isUUID(),
-        body('contractId').optional().isUUID(),
+        body('intelligenceDocumentId').optional().isUUID(),
         body('description').optional().isString(),
         body('obligationType').optional().isString(),
         body('party').optional().isString(),
@@ -287,7 +268,7 @@ router.patch(
         body('frequency').optional().isString(),
         body('amount').optional().isNumeric(),
         body('currency').optional().isString(),
-        body('sourceClause').optional().isString(),
+        body('sourceSnippet').optional().isString(),
         body('confidence').optional().isFloat({ min: 0, max: 1 }),
         body('tags').optional().isArray(),
         body('notes').optional().isString(),
@@ -300,8 +281,7 @@ router.patch(
     async (req: Request, res: Response) => {
         try {
             const obligation = await obligationService.updateObligation(req.params.id, {
-                leaseId: req.body.leaseId,
-                contractId: req.body.contractId,
+                intelligenceDocumentId: req.body.intelligenceDocumentId,
                 description: req.body.description,
                 obligationType: req.body.obligationType,
                 party: req.body.party,
@@ -311,7 +291,7 @@ router.patch(
                 frequency: req.body.frequency,
                 amount: req.body.amount !== undefined ? Number(req.body.amount) : undefined,
                 currency: req.body.currency,
-                sourceClause: req.body.sourceClause,
+                sourceSnippet: req.body.sourceSnippet,
                 confidence: req.body.confidence !== undefined ? Number(req.body.confidence) : undefined,
                 tags: req.body.tags,
                 notes: req.body.notes,

@@ -2,13 +2,21 @@ import app from './server';
 import { config } from './config/environment';
 import { logger } from './utils/logger';
 import { initializeEventPublisher } from './streaming/eventPublisher';
+import { streamConsumer } from './services/streamConsumerService';
+import { registerStreamHandlers } from './services/streamRegistry';
+
+process.on('SIGTERM', async () => {
+  await streamConsumer.stop();
+});
 
 async function startServer() {
   try {
-    // Initialize event publisher
     await initializeEventPublisher();
 
-    // Start server
+    registerStreamHandlers();
+    await streamConsumer.connect();
+    await streamConsumer.start();
+
     app.listen(config.port, () => {
       logger.info(`Language Intelligence Service started on port ${config.port}`);
     });
@@ -19,4 +27,3 @@ async function startServer() {
 }
 
 startServer();
-
