@@ -95,6 +95,7 @@ router.get(
  */
 router.get(
   '/collections/:collectionName/stats',
+  documentSearchRateLimiter,
   authenticate,
   validate([param('collectionName').notEmpty().isString()]),
   async (req: Request, res: Response) => {
