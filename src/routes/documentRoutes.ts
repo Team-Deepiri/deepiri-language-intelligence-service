@@ -107,8 +107,8 @@ router.post(
 
 router.get(
   '/',
-  authenticate,
   listRateLimiter,
+  authenticate,
   validate([
     query('documentKind').optional().isString(),
     query('status').optional().isString(),
