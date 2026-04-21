@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { param, query } from 'express-validator';
 import multer from 'multer';
+import rateLimit from 'express-rate-limit';
 import { intelligenceDocumentService } from '../services/intelligenceDocumentService';
 import { obligationService } from '../services/obligationService';
 import { documentService } from '../services/documentService';
@@ -10,6 +11,13 @@ import { validate, commonValidations } from '../middleware/inputValidation';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const uploadRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many upload requests, please try again later.' },
+});
 
 function parseOptionalJson<T>(raw: unknown, label: string): T | undefined {
   if (raw === undefined || raw === null || raw === '') return undefined;
@@ -27,6 +35,7 @@ function parseOptionalJson<T>(raw: unknown, label: string): T | undefined {
 router.post(
   '/upload',
   authenticate,
+  uploadRateLimiter,
   upload.single('file'),
   validate([
     commonValidations.string('documentKey', 200),
