@@ -144,6 +144,14 @@ const documentRelatedFetchRateLimiter = rateLimit({
   message: { error: 'Too many related document fetch requests, please try again later.' },
 });
 
+const versionsFetchRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many document versions fetch requests, please try again later.' },
+});
+
 const reprocessRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
@@ -173,7 +181,7 @@ router.get(
 router.get(
   '/:id/versions',
   authenticate,
-  documentRelatedFetchRateLimiter,
+  versionsFetchRateLimiter,
   validate([param('id').isUUID().withMessage('Invalid document ID format')]),
   async (req: Request, res: Response) => {
     try {
