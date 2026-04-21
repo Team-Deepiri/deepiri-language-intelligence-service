@@ -1,12 +1,21 @@
 import { Router, Request, Response } from 'express';
 import { param, body, query } from 'express-validator';
 import axios from 'axios';
+import rateLimit from 'express-rate-limit';
 import { config } from '../config/environment';
 import { secureLog } from '@deepiri/shared-utils';
 import { authenticate } from './middleware/auth';
 import { validate } from '../middleware/inputValidation';
 
 const router = Router();
+
+const documentSearchRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please try again later.' },
+});
 
 // ============================================================================
 // Collection Types for Language Intelligence Platform
@@ -228,6 +237,7 @@ router.delete(
 router.get(
   '/collections/:collectionName/documents',
   authenticate,
+  documentSearchRateLimiter,
   validate([
     param('collectionName').notEmpty().isString(),
     query('query').optional().isString(),
@@ -276,6 +286,7 @@ router.get(
 router.post(
   '/collections/:collectionName/documents/search',
   authenticate,
+  documentSearchRateLimiter,
   validate([
     param('collectionName').notEmpty().isString(),
     body('query').notEmpty().isString(),
