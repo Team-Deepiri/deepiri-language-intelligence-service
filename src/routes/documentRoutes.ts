@@ -128,9 +128,18 @@ router.get(
   }
 );
 
+const getByIdRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many document fetch requests, please try again later.' },
+});
+
 router.get(
   '/:id',
   authenticate,
+  getByIdRateLimiter,
   validate([param('id').isUUID().withMessage('Invalid document ID format')]),
   async (req: Request, res: Response) => {
     try {
