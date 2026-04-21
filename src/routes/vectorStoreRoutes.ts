@@ -60,6 +60,7 @@ const cyrexClient = axios.create({
 router.get(
   '/collections/types',
   authenticate,
+  documentSearchRateLimiter,
   validate([]),
   (req: Request, res: Response) => {
     res.json({
