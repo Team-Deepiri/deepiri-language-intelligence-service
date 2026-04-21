@@ -11,6 +11,12 @@ import { validate, commonValidations } from '../middleware/inputValidation';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const listRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 const uploadRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -102,6 +108,7 @@ router.post(
 router.get(
   '/',
   authenticate,
+  listRateLimiter,
   validate([
     query('documentKind').optional().isString(),
     query('status').optional().isString(),
