@@ -136,6 +136,22 @@ const getByIdRateLimiter = rateLimit({
   message: { error: 'Too many document fetch requests, please try again later.' },
 });
 
+const documentRelatedFetchRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many related document fetch requests, please try again later.' },
+});
+
+const reprocessRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many reprocess requests, please try again later.' },
+});
+
 router.get(
   '/:id',
   authenticate,
@@ -157,6 +173,7 @@ router.get(
 router.get(
   '/:id/versions',
   authenticate,
+  documentRelatedFetchRateLimiter,
   validate([param('id').isUUID().withMessage('Invalid document ID format')]),
   async (req: Request, res: Response) => {
     try {
@@ -171,6 +188,7 @@ router.get(
 router.get(
   '/:id/obligations',
   authenticate,
+  documentRelatedFetchRateLimiter,
   validate([param('id').isUUID().withMessage('Invalid document ID format')]),
   async (req: Request, res: Response) => {
     try {
@@ -185,6 +203,7 @@ router.get(
 router.post(
   '/:id/reprocess',
   authenticate,
+  reprocessRateLimiter,
   validate([param('id').isUUID().withMessage('Invalid document ID format')]),
   async (req: Request, res: Response) => {
     try {
