@@ -77,6 +77,7 @@ router.get(
 router.get(
   '/collections',
   authenticate,
+  documentSearchRateLimiter,
   validate([]),
   async (req: Request, res: Response) => {
     try {
