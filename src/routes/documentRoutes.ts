@@ -210,8 +210,8 @@ router.get(
 
 router.post(
   '/:id/reprocess',
-  authenticate,
   reprocessRateLimiter,
+  authenticate,
   validate([param('id').isUUID().withMessage('Invalid document ID format')]),
   async (req: Request, res: Response) => {
     try {
