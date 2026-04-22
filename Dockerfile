@@ -1,10 +1,5 @@
 # Build main service
-FROM node:20-alpine
-WORKDIR /app
-
-# Install curl for health checks and OpenSSL for Prisma
-# Alpine uses OpenSSL 3.x, Prisma will use linux-musl-openssl-3.0.x binary
-RUN apk add --no-cache curl openssl
+FROM ghcr.io/team-deepiri/deepiri-base:20-alpine
 
 # Copy package files
 COPY package*.json ./
@@ -24,16 +19,18 @@ RUN --mount=type=secret,id=github_token \
 COPY src ./src
 COPY prisma ./prisma
 
-# Copy baseline migration script
-COPY --chown=root:root scripts/prisma-baseline.sh /usr/local/bin/prisma-baseline.sh
-RUN chmod +x /usr/local/bin/prisma-baseline.sh
-
 # Generate Prisma client
 # Binary target is specified in schema.prisma for Alpine compatibility
 RUN npx prisma generate
 
 # Build TypeScript
 RUN npm run build
+
+RUN npm prune --omit=dev && \
+    npm cache clean --force && \
+    mkdir -p logs && chown -R nodejs:nodejs /app
+
+USER nodejs
 
 # Expose port
 EXPOSE 5003
@@ -43,5 +40,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:5003/health || exit 1
 
 # Start server
-CMD ["npm", "start"]
-
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+CMD ["/usr/bin/dumb-init", "--", "node", "dist/index.js"]
