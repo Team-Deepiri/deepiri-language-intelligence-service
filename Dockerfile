@@ -1,23 +1,21 @@
-# Build main service
 FROM ghcr.io/team-deepiri/deepiri-base:20-alpine
 
 # Copy package files
-COPY package*.json ./
-COPY tsconfig.json ./
-COPY .npmrc ./
+COPY backend/deepiri-language-intelligence-service/package*.json ./
+COPY backend/deepiri-language-intelligence-service/tsconfig.json ./
 
 # Install dependencies
 RUN --mount=type=secret,id=github_token \
     { echo "@team-deepiri:registry=https://npm.pkg.github.com"; \
       echo "//npm.pkg.github.com/:_authToken=$(cat /run/secrets/github_token)"; \
-    } > .npmrc && \
-    npm ci --legacy-peer-deps && \
-    npm cache clean --force && \
-    echo "@team-deepiri:registry=https://npm.pkg.github.com" > .npmrc
+    } > .npmrc \
+ && npm ci --legacy-peer-deps \
+ && npm cache clean --force \
+ && echo "@team-deepiri:registry=https://npm.pkg.github.com" > .npmrc
 
 # Copy source code
-COPY src ./src
-COPY prisma ./prisma
+COPY backend/deepiri-language-intelligence-service/src ./src
+COPY backend/deepiri-language-intelligence-service/prisma ./prisma
 
 # Generate Prisma client
 # Binary target is specified in schema.prisma for Alpine compatibility
