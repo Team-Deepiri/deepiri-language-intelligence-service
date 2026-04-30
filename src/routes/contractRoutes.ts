@@ -7,7 +7,7 @@ import { documentService } from '../services/documentService';
 import { cyrexClient } from '../services/cyrexClient';
 import { authenticate } from './middleware/auth';
 import { handleValidationErrors } from './middleware/validation';
-import { logger } from '@deepiri/shared-utils';
+import { logger } from '@team-deepiri/shared-utils';
 import { validate, commonValidations } from '../middleware/inputValidation';
 
 const router = Router();

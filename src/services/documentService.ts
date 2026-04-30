@@ -1,7 +1,7 @@
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { config } from '../config/environment';
-import { logger } from '@deepiri/shared-utils';
+import { logger } from '@team-deepiri/shared-utils';
 import { v4 as uuidv4 } from 'uuid';
 import * as path from 'path';
 import * as mime from 'mime-types';

@@ -4,7 +4,7 @@ import { documentService } from './documentService';
 import { obligationService } from './obligationService';
 import { clauseEvolutionService } from './clauseEvolutionService';
 import { eventPublisher } from '../streaming/eventPublisher';
-import { logger } from '@deepiri/shared-utils';
+import { logger } from '@team-deepiri/shared-utils';
 import type { Contract, Clause, ContractVersion, Prisma } from '@prisma/client';
 
 export interface CreateContractInput {
