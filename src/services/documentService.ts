@@ -1,7 +1,7 @@
 import { S3Client, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { config } from '../config/environment';
-import { logger } from '@deepiri/shared-utils';
+import { logger } from '@team-deepiri/shared-utils';
 import { v4 as uuidv4 } from 'uuid';
 import * as path from 'path';
 import * as mime from 'mime-types';
@@ -22,7 +22,7 @@ export class DocumentService {
 
   constructor() {
     this.bucket = config.storage.bucket;
-    
+
     if (config.storage.provider === 's3') {
       this.s3Client = new S3Client({
         region: config.storage.region,
@@ -102,11 +102,19 @@ export class DocumentService {
    * Derives the storage key from the documentUrl.
    */
   private async downloadBuffer(documentUrl: string): Promise<Buffer> {
-    // Derive storage key: strip endpoint + bucket prefix from the full URL
     const prefix = `${config.storage.endpoint}/${config.storage.bucket}/`;
-    const storageKey = documentUrl.startsWith(prefix)
-      ? documentUrl.slice(prefix.length)
-      : documentUrl.replace(/^https?:\/\/[^/]+\/[^/]+\//, '');
+    let storageKey: string;
+
+    if (documentUrl.startsWith(prefix)) {
+      storageKey = documentUrl.slice(prefix.length);
+    } else {
+      const parsed = new URL(documentUrl);
+      const pathKey = parsed.pathname.replace(/^\/+/, '');
+      const pathStylePrefix = `${config.storage.bucket}/`;
+      storageKey = pathKey.startsWith(pathStylePrefix)
+        ? pathKey.slice(pathStylePrefix.length)
+        : pathKey;
+    }
 
     const command = new GetObjectCommand({ Bucket: this.bucket, Key: storageKey });
     const response = await this.s3Client.send(command);
@@ -159,7 +167,6 @@ export class DocumentService {
    * Extract text from a document.
    * Tries local extraction first (pdf-parse / mammoth / plain-text read).
    * Falls back to Cyrex for image/OCR types or when local extraction fails.
-   * If Cyrex is also unavailable, returns an empty string so processing can continue.
    */
   async extractText(documentUrl: string, documentType?: string): Promise<string> {
     logger.info('Extracting text from document', { documentUrl, documentType });
@@ -197,13 +204,19 @@ export class DocumentService {
       );
 
       if (!response.data.success) throw new Error(response.data.error || 'Cyrex extraction failed');
-      return response.data.text || '';
+
+      const extractedText = response.data.text || '';
+      if (!extractedText.trim()) {
+        throw new Error('Cyrex extraction returned empty text');
+      }
+
+      return extractedText;
     } catch (cyrexError: any) {
-      logger.warn('Cyrex text extraction unavailable, continuing with empty text', {
+      logger.error('Cyrex text extraction failed', {
         documentUrl,
         error: cyrexError.message,
       });
-      return '';
+      throw new Error(`Text extraction failed: ${cyrexError.message}`);
     }
   }
 
@@ -230,4 +243,3 @@ export class DocumentService {
 }
 
 export const documentService = new DocumentService();
-

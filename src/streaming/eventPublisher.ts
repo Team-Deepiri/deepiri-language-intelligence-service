@@ -2,13 +2,28 @@ import {
   StreamingClient,
   StreamTopics,
   StreamEvent,
-  type DocumentIngestionRecordPayload,
-} from '@deepiri/shared-utils';
+} from '@team-deepiri/shared-utils';
 import { config } from '../config/environment';
 import { logger } from '../utils/logger';
 import { broadcastEvent } from './socketBroadcaster';
 
 let streamingClient: StreamingClient | null = null;
+const INGESTION_EVENTS_TOPIC = 'ingestion-events';
+
+export interface DocumentIngestionRecordPayload {
+  schemaVersion: number;
+  documentId: string;
+  organizationId?: string | null;
+  documentKind: string;
+  intelligenceProfile: string;
+  processingStatus: string;
+  textFingerprint: string;
+  chunkCount: number;
+  labels?: Record<string, unknown>;
+  artifactsRef?: Record<string, unknown>;
+  correlationId?: string;
+  occurredAt: string;
+}
 
 export async function initializeEventPublisher(): Promise<void> {
   try {
@@ -34,7 +49,7 @@ async function publishEvent(event: StreamEvent): Promise<void> {
 
 async function publishIngestionEvent(event: StreamEvent): Promise<void> {
   if (!streamingClient) await initializeEventPublisher();
-  await streamingClient!.publish(StreamTopics.INGESTION_EVENTS, event);
+  await streamingClient!.publish(INGESTION_EVENTS_TOPIC, event);
 }
 
 export async function publishDocumentCreated(
@@ -234,4 +249,3 @@ export const eventPublisher = {
   publishDependencyCreated,
   publishDependencyDeleted,
 };
-

@@ -4,7 +4,7 @@ import { cyrexClient } from './cyrexClient';
 import { documentService } from './documentService';
 import { obligationService } from './obligationService';
 import { eventPublisher } from '../streaming/eventPublisher';
-import { logger } from '@deepiri/shared-utils';
+import { logger } from '@team-deepiri/shared-utils';
 import { resolveAbstractPipeline } from './intelligenceProfileResolver';
 import type { IntelligenceDocument, IntelligenceDocumentVersion, Prisma } from '@prisma/client';
 
@@ -22,6 +22,11 @@ export interface CreateIntelligenceDocumentInput {
   tags?: string[];
   notes?: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface IntelligenceDocumentScope {
+  userId?: string;
+  organizationId?: string;
 }
 
 export class IntelligenceDocumentService {
@@ -53,8 +58,16 @@ export class IntelligenceDocumentService {
     return row;
   }
 
-  async getById(id: string): Promise<IntelligenceDocument | null> {
-    return prisma.intelligenceDocument.findUnique({ where: { id } });
+  private scopedWhere(id: string, scope?: IntelligenceDocumentScope): Prisma.IntelligenceDocumentWhereInput {
+    return {
+      id,
+      ...(scope?.userId ? { userId: scope.userId } : {}),
+      ...(scope?.organizationId ? { organizationId: scope.organizationId } : {}),
+    };
+  }
+
+  async getById(id: string, scope?: IntelligenceDocumentScope): Promise<IntelligenceDocument | null> {
+    return prisma.intelligenceDocument.findFirst({ where: this.scopedWhere(id, scope) });
   }
 
   async list(filters: {
@@ -71,9 +84,15 @@ export class IntelligenceDocumentService {
     return prisma.intelligenceDocument.findMany({ where, orderBy: { createdAt: 'desc' } });
   }
 
-  async processDocument(documentId: string, correlationId?: string): Promise<IntelligenceDocument> {
+  async processDocument(
+    documentId: string,
+    correlationId?: string,
+    scope?: IntelligenceDocumentScope
+  ): Promise<IntelligenceDocument> {
     const startTime = Date.now();
-    const doc = await prisma.intelligenceDocument.findUnique({ where: { id: documentId } });
+    const doc = await prisma.intelligenceDocument.findFirst({
+      where: this.scopedWhere(documentId, scope),
+    });
     if (!doc) throw new Error('Document not found');
 
     const pipeline = resolveAbstractPipeline(
@@ -89,6 +108,10 @@ export class IntelligenceDocumentService {
 
     try {
       const extractedText = await documentService.extractText(doc.documentUrl);
+      if (!extractedText.trim()) {
+        throw new Error('Text extraction returned empty content');
+      }
+
       const textFingerprint = `sha256:${createHash('sha256').update(extractedText).digest('hex')}`;
 
       const existingVersions = await prisma.intelligenceDocumentVersion.findMany({
@@ -204,10 +227,14 @@ export class IntelligenceDocumentService {
     }
   }
 
-  async processDocumentAsync(documentId: string, correlationId?: string): Promise<void> {
+  async processDocumentAsync(
+    documentId: string,
+    correlationId?: string,
+    scope?: IntelligenceDocumentScope
+  ): Promise<void> {
     setImmediate(async () => {
       try {
-        await this.processDocument(documentId, correlationId);
+        await this.processDocument(documentId, correlationId, scope);
       } catch (error: any) {
         logger.error('Intelligence document async processing failed', {
           documentId,
@@ -217,7 +244,13 @@ export class IntelligenceDocumentService {
     });
   }
 
-  async getVersions(intelligenceDocumentId: string): Promise<IntelligenceDocumentVersion[]> {
+  async getVersions(
+    intelligenceDocumentId: string,
+    scope?: IntelligenceDocumentScope
+  ): Promise<IntelligenceDocumentVersion[]> {
+    const document = await this.getById(intelligenceDocumentId, scope);
+    if (!document) return [];
+
     return prisma.intelligenceDocumentVersion.findMany({
       where: { intelligenceDocumentId },
       orderBy: { versionNumber: 'desc' },

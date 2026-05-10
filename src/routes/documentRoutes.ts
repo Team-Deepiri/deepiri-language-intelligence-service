@@ -6,7 +6,7 @@ import { intelligenceDocumentService } from '../services/intelligenceDocumentSer
 import { obligationService } from '../services/obligationService';
 import { documentService } from '../services/documentService';
 import { authenticate } from './middleware/auth';
-import { logger } from '@deepiri/shared-utils';
+import { logger } from '@team-deepiri/shared-utils';
 import { validate, commonValidations } from '../middleware/inputValidation';
 
 const router = Router();
@@ -36,6 +36,13 @@ function parseOptionalJson<T>(raw: unknown, label: string): T | undefined {
     }
   }
   return undefined;
+}
+
+function requestScope(req: Request) {
+  return {
+    userId: req.user?.id,
+    organizationId: req.user?.organizationId,
+  };
 }
 
 router.post(
@@ -90,7 +97,7 @@ router.post(
       });
 
       const correlationId = (req as any).requestId as string | undefined;
-      intelligenceDocumentService.processDocumentAsync(row.id, correlationId).catch((error) => {
+      intelligenceDocumentService.processDocumentAsync(row.id, correlationId, requestScope(req)).catch((error) => {
         logger.error('Failed to process document asynchronously', {
           documentId: row.id,
           error: error.message,
@@ -167,7 +174,7 @@ router.get(
   validate([param('id').isUUID().withMessage('Invalid document ID format')]),
   async (req: Request, res: Response) => {
     try {
-      const row = await intelligenceDocumentService.getById(req.params.id);
+      const row = await intelligenceDocumentService.getById(req.params.id, requestScope(req));
       if (!row) {
         return res.status(404).json({ error: 'Document not found' });
       }
@@ -185,7 +192,7 @@ router.get(
   validate([param('id').isUUID().withMessage('Invalid document ID format')]),
   async (req: Request, res: Response) => {
     try {
-      const versions = await intelligenceDocumentService.getVersions(req.params.id);
+      const versions = await intelligenceDocumentService.getVersions(req.params.id, requestScope(req));
       res.json({ success: true, data: versions });
     } catch (error: any) {
       res.status(500).json({ error: 'Failed to fetch versions', message: error.message });
@@ -200,6 +207,11 @@ router.get(
   validate([param('id').isUUID().withMessage('Invalid document ID format')]),
   async (req: Request, res: Response) => {
     try {
+      const row = await intelligenceDocumentService.getById(req.params.id, requestScope(req));
+      if (!row) {
+        return res.status(404).json({ error: 'Document not found' });
+      }
+
       const obligations = await obligationService.getObligationsByIntelligenceDocumentId(req.params.id);
       res.json({ success: true, data: obligations });
     } catch (error: any) {
@@ -216,7 +228,12 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const correlationId = (req as any).requestId as string | undefined;
-      intelligenceDocumentService.processDocumentAsync(req.params.id, correlationId).catch((error) => {
+      const row = await intelligenceDocumentService.getById(req.params.id, requestScope(req));
+      if (!row) {
+        return res.status(404).json({ error: 'Document not found' });
+      }
+
+      intelligenceDocumentService.processDocumentAsync(req.params.id, correlationId, requestScope(req)).catch((error) => {
         logger.error('Reprocess failed', { documentId: req.params.id, error: error.message });
       });
       res.status(202).json({ success: true, message: 'Processing started' });

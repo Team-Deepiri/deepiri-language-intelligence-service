@@ -1,4 +1,4 @@
-import { StreamEvent } from '@deepiri/shared-utils';
+import { StreamEvent } from '@team-deepiri/shared-utils';
 import { prisma } from '../db';
 import { logger } from '../utils/logger';
 

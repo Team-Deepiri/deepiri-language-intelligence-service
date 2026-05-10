@@ -1,6 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import { config } from '../config/environment';
-import { secureLog } from '@deepiri/shared-utils';
+import { secureLog } from '@team-deepiri/shared-utils';
 
 export type AbstractPipelineId = 'A' | 'B';
 
@@ -25,7 +25,8 @@ export class CyrexClient {
 
   /**
    * POST to a pipeline URL configured via CYREX_PIPELINE_A_PATH / CYREX_PIPELINE_B_PATH.
-   * When the path is empty, returns a minimal stub (text extraction only upstream).
+   * Missing pipeline paths are configuration errors; returning an empty stub would
+   * incorrectly mark ingestion as successful with no abstractions.
    */
   async runAbstractPipeline(
     pipeline: AbstractPipelineId,
@@ -34,15 +35,10 @@ export class CyrexClient {
     const path =
       pipeline === 'A' ? config.cyrex.pipelinePathA : config.cyrex.pipelinePathB;
     if (!path || path.trim() === '') {
-      secureLog('info', 'Cyrex pipeline path not configured; skipping remote abstract', {
+      secureLog('error', 'Cyrex pipeline path not configured', {
         pipeline,
       });
-      return {
-        data: {
-          abstractedTerms: {},
-          obligations: [],
-        },
-      };
+      throw new Error(`Cyrex pipeline ${pipeline} path is not configured`);
     }
     try {
       secureLog('info', 'Calling Cyrex abstract pipeline', { pipeline });

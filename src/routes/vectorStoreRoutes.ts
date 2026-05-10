@@ -3,7 +3,7 @@ import { param, body, query } from 'express-validator';
 import axios from 'axios';
 import rateLimit from 'express-rate-limit';
 import { config } from '../config/environment';
-import { secureLog } from '@deepiri/shared-utils';
+import { secureLog } from '@team-deepiri/shared-utils';
 import { authenticate } from './middleware/auth';
 import { validate } from '../middleware/inputValidation';
 

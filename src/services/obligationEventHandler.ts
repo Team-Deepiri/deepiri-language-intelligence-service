@@ -1,4 +1,4 @@
-import { StreamEvent } from '@deepiri/shared-utils';
+import { StreamEvent } from '@team-deepiri/shared-utils';
 import { logger } from '../utils/logger';
 
 export async function handleObligationCreated(event: StreamEvent): Promise<void> {
