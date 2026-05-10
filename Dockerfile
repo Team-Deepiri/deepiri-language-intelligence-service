@@ -1,4 +1,6 @@
-FROM ghcr.io/team-deepiri/deepiri-suite:20-alpine
+FROM node:20-alpine
+
+RUN apk add --no-cache curl dumb-init openssl
 
 COPY shared/deepiri-shared-utils/package*.json /shared/deepiri-shared-utils/
 COPY shared/deepiri-shared-utils/tsconfig.json /shared/deepiri-shared-utils/
@@ -33,9 +35,9 @@ RUN npm run build
 
 RUN npm prune --omit=dev && \
     npm cache clean --force && \
-    mkdir -p logs && chown -R nodejs:nodejs /app
+    mkdir -p logs && chown -R node:node /app
 
-USER nodejs
+USER node
 
 # Expose port
 EXPOSE 5003
@@ -46,4 +48,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Start server
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-CMD ["/usr/bin/dumb-init", "--", "node", "dist/index.js"]
+CMD ["dumb-init", "--", "node", "dist/index.js"]
