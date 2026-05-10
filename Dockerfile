@@ -1,6 +1,7 @@
 FROM node:20-alpine
 
 RUN apk add --no-cache curl dumb-init openssl
+WORKDIR /app
 
 COPY shared/deepiri-shared-utils/package*.json /shared/deepiri-shared-utils/
 COPY shared/deepiri-shared-utils/tsconfig.json /shared/deepiri-shared-utils/
