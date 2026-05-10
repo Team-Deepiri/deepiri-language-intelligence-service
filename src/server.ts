@@ -82,28 +82,28 @@ app.get('/health', async (req: Request, res: Response) => {
     // Check database connectivity if prisma is initialized
     if (prisma) {
       await prisma.$queryRaw`SELECT 1`;
-      res.status(200).json({ 
-        status: 'healthy', 
+      res.status(200).json({
+        status: 'healthy',
         service: 'language-intelligence-service',
         database: 'connected',
-        timestamp: new Date().toISOString() 
+        timestamp: new Date().toISOString()
       });
     } else {
-      res.status(503).json({ 
-        status: 'unhealthy', 
+      res.status(503).json({
+        status: 'unhealthy',
         service: 'language-intelligence-service',
         database: 'not_initialized',
-        timestamp: new Date().toISOString() 
+        timestamp: new Date().toISOString()
       });
     }
   } catch (error: any) {
     logger.error('Health check failed:', { error: error.message });
-    res.status(503).json({ 
-      status: 'unhealthy', 
+    res.status(503).json({
+      status: 'unhealthy',
       service: 'language-intelligence-service',
       database: 'disconnected',
       error: error.message,
-      timestamp: new Date().toISOString() 
+      timestamp: new Date().toISOString()
     });
   }
 });
@@ -114,7 +114,7 @@ app.use('/api/v1', routes);
 // Error handler
 const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
   logger.error('Language Intelligence Service error:', { error: err.message });
-  res.status(500).json({ 
+  res.status(500).json({
     error: 'Internal server error',
     message: process.env.NODE_ENV === 'development' ? err.message : undefined
   });
