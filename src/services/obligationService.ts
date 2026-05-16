@@ -268,6 +268,118 @@ export class ObligationService {
     });
   }
 
+  async createObligation(input: CreateObligationInput): Promise<Obligation> {
+    return prisma.obligation.create({
+      data: {
+        leaseId: input.leaseId ?? null,
+        contractId: input.contractId ?? null,
+        description: input.description,
+        obligationType: this._mapObligationType(input.obligationType) as any,
+        party: this._mapParty(input.party ?? ''),
+        deadline: input.deadline ?? null,
+        startDate: input.startDate ?? null,
+        endDate: input.endDate ?? null,
+        frequency: input.frequency ?? null,
+        amount: input.amount ?? null,
+        currency: input.currency ?? 'USD',
+        sourceClause: input.sourceClause ?? null,
+        confidence: input.confidence ?? null,
+        tags: input.tags ?? [],
+        notes: input.notes ?? null,
+      },
+    });
+  }
+
+  async getObligation(id: string): Promise<Obligation> {
+    const obligation = await prisma.obligation.findUnique({ where: { id } });
+    if (!obligation) throw new Error('Obligation not found');
+    return obligation;
+  }
+
+  async updateObligation(id: string, data: Partial<CreateObligationInput & {
+    status?: string;
+    completedAt?: Date;
+    owner?: string;
+    ownerEmail?: string;
+  }>): Promise<Obligation> {
+    return prisma.obligation.update({
+      where: { id },
+      data: {
+        ...(data.leaseId !== undefined && { leaseId: data.leaseId }),
+        ...(data.contractId !== undefined && { contractId: data.contractId }),
+        ...(data.description !== undefined && { description: data.description }),
+        ...(data.obligationType !== undefined && { obligationType: this._mapObligationType(data.obligationType) as any }),
+        ...(data.party !== undefined && { party: this._mapParty(data.party) }),
+        ...(data.deadline !== undefined && { deadline: data.deadline }),
+        ...(data.startDate !== undefined && { startDate: data.startDate }),
+        ...(data.endDate !== undefined && { endDate: data.endDate }),
+        ...(data.frequency !== undefined && { frequency: data.frequency }),
+        ...(data.amount !== undefined && { amount: data.amount }),
+        ...(data.currency !== undefined && { currency: data.currency }),
+        ...(data.sourceClause !== undefined && { sourceClause: data.sourceClause }),
+        ...(data.confidence !== undefined && { confidence: data.confidence }),
+        ...(data.tags !== undefined && { tags: data.tags }),
+        ...(data.notes !== undefined && { notes: data.notes }),
+        ...(data.status !== undefined && { status: data.status as any }),
+        ...(data.completedAt !== undefined && { completedAt: data.completedAt }),
+        ...(data.owner !== undefined && { owner: data.owner }),
+        ...(data.ownerEmail !== undefined && { ownerEmail: data.ownerEmail }),
+      },
+    });
+  }
+
+  async deleteObligation(id: string): Promise<Obligation> {
+    return prisma.obligation.delete({ where: { id } });
+  }
+
+  async listDependencies(obligationId: string, direction: 'source' | 'target' | 'both' = 'both') {
+    const where: any = {};
+    if (direction === 'source') where.sourceObligationId = obligationId;
+    else if (direction === 'target') where.targetObligationId = obligationId;
+    else where.OR = [{ sourceObligationId: obligationId }, { targetObligationId: obligationId }];
+    return prisma.obligationDependency.findMany({ where });
+  }
+
+  async createDependency(input: {
+    sourceObligationId: string;
+    targetObligationId: string;
+    dependencyType?: string;
+    description?: string;
+    confidence?: number;
+    sourceClause?: string;
+    targetClause?: string;
+    triggerCondition?: string;
+    sourceContractId?: string;
+    targetContractId?: string;
+    sourceLeaseId?: string;
+    targetLeaseId?: string;
+    discoveredBy?: string;
+  }) {
+    return prisma.obligationDependency.create({
+      data: {
+        sourceObligationId: input.sourceObligationId,
+        targetObligationId: input.targetObligationId,
+        dependencyType: (input.dependencyType ?? 'REQUIRES') as any,
+        description: input.description ?? null,
+        confidence: input.confidence ?? null,
+        sourceClause: input.sourceClause ?? null,
+        targetClause: input.targetClause ?? null,
+        triggerCondition: input.triggerCondition ?? null,
+        sourceContractId: input.sourceContractId ?? null,
+        targetContractId: input.targetContractId ?? null,
+        sourceLeaseId: input.sourceLeaseId ?? null,
+        targetLeaseId: input.targetLeaseId ?? null,
+        discoveredBy: input.discoveredBy ?? null,
+      },
+    });
+  }
+
+  async deleteDependency(sourceObligationId: string, targetObligationId: string) {
+    return prisma.obligationDependency.delete({
+      where: { sourceObligationId_targetObligationId: { sourceObligationId, targetObligationId } },
+    });
+  }
+
   private _mapObligationType(type: string): string {
     const mapping: Record<string, string> = {
       PAYMENT: 'PAYMENT',
