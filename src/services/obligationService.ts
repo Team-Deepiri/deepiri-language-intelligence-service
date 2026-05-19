@@ -105,112 +105,6 @@ export class ObligationService {
   }
 
   /**
-   * Create a single obligation
-   */
-  async createObligation(data: CreateObligationInput): Promise<Obligation> {
-    return prisma.obligation.create({
-      data: {
-        leaseId: data.leaseId || null,
-        contractId: data.contractId || null,
-        description: data.description,
-        obligationType: this._mapObligationType(data.obligationType) as any,
-        party: this._mapParty(data.party || ''),
-        deadline: data.deadline || null,
-        startDate: data.startDate || null,
-        endDate: data.endDate || null,
-        frequency: data.frequency || null,
-        amount: data.amount || null,
-        currency: data.currency || 'USD',
-        sourceClause: data.sourceClause || null,
-        confidence: data.confidence || null,
-        status: 'PENDING',
-        tags: data.tags || [],
-        notes: data.notes || null,
-      },
-    });
-  }
-
-  /**
-   * Get an obligation by ID
-   */
-  async getObligation(id: string): Promise<Obligation> {
-    const obligation = await prisma.obligation.findUnique({
-      where: { id },
-    });
-    if (!obligation) {
-      throw new Error('Obligation not found');
-    }
-    return obligation;
-  }
-
-  /**
-   * Update an obligation
-   */
-  async updateObligation(id: string, data: Partial<CreateObligationInput> & { status?: string, completedAt?: Date, owner?: string, ownerEmail?: string }): Promise<Obligation> {
-    const updateData: any = { ...data };
-    if (updateData.obligationType) {
-      updateData.obligationType = this._mapObligationType(updateData.obligationType);
-    }
-    if (updateData.party) {
-      updateData.party = this._mapParty(updateData.party);
-    }
-    return prisma.obligation.update({
-      where: { id },
-      data: updateData,
-    });
-  }
-
-  /**
-   * Delete an obligation
-   */
-  async deleteObligation(id: string): Promise<Obligation> {
-    return prisma.obligation.delete({
-      where: { id },
-    });
-  }
-
-  /**
-   * List dependencies
-   */
-  async listDependencies(id: string, direction: 'source' | 'target' | 'both'): Promise<any[]> {
-    const where: any = {};
-    if (direction === 'source') {
-      where.targetObligationId = id;
-    } else if (direction === 'target') {
-      where.sourceObligationId = id;
-    } else {
-      where.OR = [
-        { sourceObligationId: id },
-        { targetObligationId: id },
-      ];
-    }
-    return prisma.obligationDependency.findMany({
-      where,
-    });
-  }
-
-  /**
-   * Create dependency
-   */
-  async createDependency(data: any): Promise<any> {
-    return prisma.obligationDependency.create({
-      data,
-    });
-  }
-
-  /**
-   * Delete dependency
-   */
-  async deleteDependency(sourceId: string, targetId: string): Promise<any> {
-    return prisma.obligationDependency.deleteMany({
-      where: {
-        sourceObligationId: sourceId,
-        targetObligationId: targetId,
-      },
-    });
-  }
-
-  /**
    * List obligations with filters
    */
   async listObligations(filters: ObligationFilters): Promise<Obligation[]> {
@@ -265,6 +159,118 @@ export class ObligationService {
         ownerEmail,
         status: 'IN_PROGRESS',
       },
+    });
+  }
+
+  async createObligation(input: CreateObligationInput): Promise<Obligation> {
+    return prisma.obligation.create({
+      data: {
+        leaseId: input.leaseId ?? null,
+        contractId: input.contractId ?? null,
+        description: input.description,
+        obligationType: this._mapObligationType(input.obligationType) as any,
+        party: this._mapParty(input.party ?? ''),
+        deadline: input.deadline ?? null,
+        startDate: input.startDate ?? null,
+        endDate: input.endDate ?? null,
+        frequency: input.frequency ?? null,
+        amount: input.amount ?? null,
+        currency: input.currency ?? 'USD',
+        sourceClause: input.sourceClause ?? null,
+        confidence: input.confidence ?? null,
+        tags: input.tags ?? [],
+        notes: input.notes ?? null,
+      },
+    });
+  }
+
+  async getObligation(id: string): Promise<Obligation> {
+    const obligation = await prisma.obligation.findUnique({ where: { id } });
+    if (!obligation) throw new Error('Obligation not found');
+    return obligation;
+  }
+
+  async updateObligation(id: string, data: Partial<CreateObligationInput & {
+    status?: string;
+    completedAt?: Date;
+    owner?: string;
+    ownerEmail?: string;
+  }>): Promise<Obligation> {
+    return prisma.obligation.update({
+      where: { id },
+      data: {
+        ...(data.leaseId !== undefined && { leaseId: data.leaseId }),
+        ...(data.contractId !== undefined && { contractId: data.contractId }),
+        ...(data.description !== undefined && { description: data.description }),
+        ...(data.obligationType !== undefined && { obligationType: this._mapObligationType(data.obligationType) as any }),
+        ...(data.party !== undefined && { party: this._mapParty(data.party) }),
+        ...(data.deadline !== undefined && { deadline: data.deadline }),
+        ...(data.startDate !== undefined && { startDate: data.startDate }),
+        ...(data.endDate !== undefined && { endDate: data.endDate }),
+        ...(data.frequency !== undefined && { frequency: data.frequency }),
+        ...(data.amount !== undefined && { amount: data.amount }),
+        ...(data.currency !== undefined && { currency: data.currency }),
+        ...(data.sourceClause !== undefined && { sourceClause: data.sourceClause }),
+        ...(data.confidence !== undefined && { confidence: data.confidence }),
+        ...(data.tags !== undefined && { tags: data.tags }),
+        ...(data.notes !== undefined && { notes: data.notes }),
+        ...(data.status !== undefined && { status: data.status as any }),
+        ...(data.completedAt !== undefined && { completedAt: data.completedAt }),
+        ...(data.owner !== undefined && { owner: data.owner }),
+        ...(data.ownerEmail !== undefined && { ownerEmail: data.ownerEmail }),
+      },
+    });
+  }
+
+  async deleteObligation(id: string): Promise<Obligation> {
+    return prisma.obligation.delete({ where: { id } });
+  }
+
+  async listDependencies(obligationId: string, direction: 'source' | 'target' | 'both' = 'both') {
+    const where: any = {};
+    if (direction === 'source') where.sourceObligationId = obligationId;
+    else if (direction === 'target') where.targetObligationId = obligationId;
+    else where.OR = [{ sourceObligationId: obligationId }, { targetObligationId: obligationId }];
+    return prisma.obligationDependency.findMany({ where });
+  }
+
+  async createDependency(input: {
+    sourceObligationId: string;
+    targetObligationId: string;
+    dependencyType?: string;
+    description?: string;
+    confidence?: number;
+    sourceClause?: string;
+    targetClause?: string;
+    triggerCondition?: string;
+    sourceContractId?: string;
+    targetContractId?: string;
+    sourceLeaseId?: string;
+    targetLeaseId?: string;
+    discoveredBy?: string;
+  }) {
+    return prisma.obligationDependency.create({
+      data: {
+        sourceObligationId: input.sourceObligationId,
+        targetObligationId: input.targetObligationId,
+        dependencyType: (input.dependencyType ?? 'REQUIRES') as any,
+        description: input.description ?? null,
+        confidence: input.confidence ?? null,
+        sourceClause: input.sourceClause ?? null,
+        targetClause: input.targetClause ?? null,
+        triggerCondition: input.triggerCondition ?? null,
+        sourceContractId: input.sourceContractId ?? null,
+        targetContractId: input.targetContractId ?? null,
+        sourceLeaseId: input.sourceLeaseId ?? null,
+        targetLeaseId: input.targetLeaseId ?? null,
+        discoveredBy: input.discoveredBy ?? null,
+      },
+    });
+  }
+
+  async deleteDependency(sourceObligationId: string, targetObligationId: string) {
+    return prisma.obligationDependency.delete({
+      where: { sourceObligationId_targetObligationId: { sourceObligationId, targetObligationId } },
     });
   }
 
