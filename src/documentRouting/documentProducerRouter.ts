@@ -38,6 +38,7 @@ export class DocumentProducerRouter {
     const action = `document.${payload.destination}.route`;
 
     return {
+      schemaVersion: '1.0',
       event: action,
       timestamp: new Date().toISOString(),
       source: this.source,

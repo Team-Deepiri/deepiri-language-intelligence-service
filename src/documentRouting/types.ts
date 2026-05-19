@@ -163,6 +163,7 @@ export type MetadataWithRouting = JsonObject & {
 };
 
 export interface DocumentRouteStreamEvent<TPayload extends DocumentRoutePayload = DocumentRoutePayload> {
+  schemaVersion: string;
   event: string;
   timestamp: string;
   source: string;
