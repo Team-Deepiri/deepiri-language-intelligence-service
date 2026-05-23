@@ -2,7 +2,6 @@ import express, { Express, Request, Response, ErrorRequestHandler, NextFunction 
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import winston from 'winston';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import routes from './routes';
@@ -17,15 +16,6 @@ dotenv.config();
 
 const app: Express = express();
 const PORT: number = config.port;
-
-// Logger
-const winstonLogger = winston.createLogger({
-  level: 'info',
-  format: winston.format.json(),
-  transports: [
-    new winston.transports.Console({ format: winston.format.simple() })
-  ]
-});
 
 // Middleware
 app.use(helmet({
