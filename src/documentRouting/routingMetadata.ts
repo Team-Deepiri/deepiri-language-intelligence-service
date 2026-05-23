@@ -11,15 +11,11 @@ function encodeKeyPart(value: string | number): string {
 }
 
 export function buildRoutingIdempotencyKey(input: RoutingIdempotencyInput): string {
-  const versionOrFingerprint = input.fingerprint
-    ? `fingerprint:${encodeKeyPart(input.fingerprint)}`
-    : `manifest:${encodeKeyPart(input.manifestVersion ?? 'unversioned')}`;
-
   return [
     'document-route',
     encodeKeyPart(input.documentId),
     encodeKeyPart(input.destination),
-    versionOrFingerprint,
+    `manifest:${encodeKeyPart(input.manifestVersion ?? 'unversioned')}`,
   ].join(':');
 }
 

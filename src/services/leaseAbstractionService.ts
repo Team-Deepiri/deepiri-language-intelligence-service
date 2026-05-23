@@ -3,6 +3,12 @@ import { cyrexClient } from './cyrexClient';
 import { documentService } from './documentService';
 import { obligationService } from './obligationService';
 import { eventPublisher } from '../streaming/eventPublisher';
+import {
+  buildDocumentRoutingFailureMetadata,
+  buildDocumentRoutingMetadata,
+  documentRoutePublicationService,
+  type DocumentRoutePublicationResult,
+} from './documentRoutePublicationService';
 import { logger } from '@team-deepiri/shared-utils';
 import type { Lease, LeaseVersion, Prisma } from '@prisma/client';
 
@@ -82,7 +88,9 @@ export class LeaseAbstractionService {
       // Extract data from response (handle both wrapped and unwrapped responses)
       const data = abstractionResult.data || abstractionResult;
       const abstractedTerms = data.abstractedTerms || {};
-      
+      const confidence = data.confidence ?? abstractionResult.confidence ?? 0.0;
+      const processingTimeMs = Date.now() - startTime;
+
       // Update lease
       const updatedLease = await prisma.lease.update({
         where: { id: leaseId },
@@ -95,9 +103,9 @@ export class LeaseAbstractionService {
           keyDates: data.keyDates || abstractedTerms.keyDates,
           propertyDetails: data.propertyDetails || abstractedTerms.propertyDetails,
           keyClauses: data.keyClauses || abstractedTerms.keyClauses,
-          extractionConfidence: data.confidence || 0.0,
+          extractionConfidence: confidence,
           processedAt: new Date(),
-          processingTimeMs: Date.now() - startTime,
+          processingTimeMs,
         },
       });
 
@@ -110,7 +118,7 @@ export class LeaseAbstractionService {
           rawText: extractedText,
           abstractedTerms,
           processedAt: new Date(),
-          processingTimeMs: Date.now() - startTime,
+          processingTimeMs,
         },
       });
 
@@ -126,8 +134,17 @@ export class LeaseAbstractionService {
       }
 
       await eventPublisher.publishLeaseProcessed(leaseId, {
-        processingTimeMs: Date.now() - startTime,
-        confidence: abstractionResult.data?.confidence || abstractionResult.confidence || 0.0,
+        processingTimeMs,
+        confidence,
+      });
+
+      await this._publishLeaseDocumentRoutes({
+        lease: updatedLease,
+        rawText: extractedText,
+        abstractedTerms,
+        qualityScore: confidence,
+        versionNumber: 1,
+        processingTimeMs,
       });
 
       return updatedLease;
@@ -157,6 +174,70 @@ export class LeaseAbstractionService {
         logger.error('Error in async lease processing', { leaseId, error: error.message });
       }
     });
+  }
+
+  private async _publishLeaseDocumentRoutes(input: {
+    lease: Lease;
+    rawText: string;
+    abstractedTerms: unknown;
+    qualityScore: number;
+    versionNumber: number;
+    processingTimeMs: number;
+  }): Promise<void> {
+    const manifestVersion = documentRoutePublicationService.getLeaseManifestVersion(
+      input.versionNumber
+    );
+
+    let routingResult: DocumentRoutePublicationResult;
+    try {
+      routingResult = await documentRoutePublicationService.publishLeaseRoutes(input);
+    } catch (error: any) {
+      const errorMessage = error.message || String(error);
+      logger.warn('Lease document route publication failed', {
+        leaseId: input.lease.id,
+        manifestVersion,
+        error: errorMessage,
+      });
+
+      try {
+        await prisma.lease.update({
+          where: { id: input.lease.id },
+          data: {
+            metadata: buildDocumentRoutingFailureMetadata({
+              existingMetadata: input.lease.metadata,
+              documentId: input.lease.id,
+              manifestVersion,
+              error: errorMessage,
+            }) as Prisma.InputJsonValue,
+          },
+        });
+      } catch (metadataError: any) {
+        logger.warn('Failed to record lease document route failure metadata', {
+          leaseId: input.lease.id,
+          error: metadataError.message,
+        });
+      }
+
+      return;
+    }
+
+    try {
+      await prisma.lease.update({
+        where: { id: input.lease.id },
+        data: {
+          metadata: buildDocumentRoutingMetadata(
+            input.lease.metadata,
+            routingResult
+          ) as Prisma.InputJsonValue,
+        },
+      });
+    } catch (error: any) {
+      logger.warn('Failed to record lease document route metadata', {
+        leaseId: input.lease.id,
+        manifestVersion,
+        error: error.message,
+      });
+    }
   }
 
   /**
@@ -198,6 +279,7 @@ export class LeaseAbstractionService {
   ): Promise<LeaseVersion> {
     const lease = await prisma.lease.findUnique({ where: { id: leaseId } });
     if (!lease) throw new Error('Lease not found');
+    const startTime = Date.now();
 
     // Get current version number
     const currentVersions = await prisma.leaseVersion.findMany({
@@ -223,7 +305,9 @@ export class LeaseAbstractionService {
       propertyAddress: lease.propertyAddress,
     });
 
-    const abstractedTerms = abstractionResult.data?.abstractedTerms || abstractionResult.abstractedTerms;
+    const data = abstractionResult.data || abstractionResult;
+    const abstractedTerms = data.abstractedTerms || {};
+    const confidence = data.confidence ?? abstractionResult.confidence ?? 0.0;
 
     // Compare with previous version if exists
     let changes = null;
@@ -241,6 +325,7 @@ export class LeaseAbstractionService {
       significantChanges = comparison.data?.significant || false;
     }
 
+    const processingTimeMs = Date.now() - startTime;
     const version = await prisma.leaseVersion.create({
       data: {
         leaseId,
@@ -252,7 +337,24 @@ export class LeaseAbstractionService {
         changeSummary,
         significantChanges,
         processedAt: new Date(),
+        processingTimeMs,
       },
+    });
+
+    await this._publishLeaseDocumentRoutes({
+      lease: {
+        ...lease,
+        documentUrl: uploadResult.url,
+        documentStorageKey: uploadResult.storageKey,
+        documentType: uploadResult.mimeType,
+        fileSize: uploadResult.fileSize,
+        extractionConfidence: confidence,
+      },
+      rawText: extractedText,
+      abstractedTerms,
+      qualityScore: confidence,
+      versionNumber: nextVersionNumber,
+      processingTimeMs,
     });
 
     return version;

@@ -14,7 +14,8 @@
     "prisma:baseline": "bash scripts/baseline-migration.sh",
     "prisma:studio": "prisma studio",
     "smoke:test": "node scripts/smoke-test.js",
-    "test": "echo \"No tests yet\" && exit 0"
+    "test": "echo \"No tests yet\" && exit 0",
+    "test:document-routing": "npm run build && node --test tests/documentRoutePublicationService.test.js"
   },
   "keywords": [
     "language-intelligence",

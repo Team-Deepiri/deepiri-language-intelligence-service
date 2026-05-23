@@ -37,7 +37,7 @@ export class DocumentProducerRouter {
   private buildEvent(payload: DocumentRoutePayload): DocumentRouteStreamEvent {
     const action = `document.${payload.destination}.route`;
 
-    return {
+    const event: DocumentRouteStreamEvent = {
       schemaVersion: '1.0',
       event: action,
       timestamp: new Date().toISOString(),
@@ -46,5 +46,11 @@ export class DocumentProducerRouter {
       action,
       data: payload,
     };
+
+    if (payload.correlationId) {
+      event.correlation_id = payload.correlationId;
+    }
+
+    return event;
   }
 }

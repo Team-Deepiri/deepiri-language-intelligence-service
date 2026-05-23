@@ -167,6 +167,7 @@ export interface DocumentRouteStreamEvent<TPayload extends DocumentRoutePayload 
   event: string;
   timestamp: string;
   source: string;
+  correlation_id?: string;
   service: string;
   action: string;
   data: TPayload;
