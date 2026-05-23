@@ -8,8 +8,20 @@ function shouldIgnoreArg(arg) {
   return arg === '--' || arg === '--passWithNoTests' || arg.startsWith('--passWithNoTests=');
 }
 
+function looksLikeTestTarget(arg) {
+  return (
+    !arg.startsWith('-') &&
+    (
+      arg === 'test' ||
+      arg === 'tests' ||
+      arg.includes('/') ||
+      /\.(?:c|m)?js$/.test(arg)
+    )
+  );
+}
+
 const forwardedArgs = process.argv.slice(2).filter((arg) => !shouldIgnoreArg(arg));
-const hasExplicitTestTarget = forwardedArgs.some((arg) => !arg.startsWith('-'));
+const hasExplicitTestTarget = forwardedArgs.some(looksLikeTestTarget);
 const nodeTestArgs = hasExplicitTestTarget
   ? forwardedArgs
   : [...forwardedArgs, ...DEFAULT_TEST_TARGETS];
