@@ -11,10 +11,11 @@ COPY backend/deepiri-language-intelligence-service/tsconfig.json ./
 RUN node -e "const fs=require('fs'),lock=JSON.parse(fs.readFileSync('package-lock.json'));delete lock.packages['../../shared/deepiri-shared-utils'];delete lock.packages['node_modules/@team-deepiri/shared-utils'];fs.writeFileSync('package-lock.json',JSON.stringify(lock));" \
  && cd /shared/deepiri-shared-utils \
  && npm ci --legacy-peer-deps \
+ && npm run build --if-present \
  && node -e "const fs=require('fs'),p=JSON.parse(fs.readFileSync('package.json'));delete p.scripts.prepare;fs.writeFileSync('package.json',JSON.stringify(p,null,2));" \
- && rm -rf node_modules \
  && cd /app \
  && npm install --legacy-peer-deps \
+ && npm install --legacy-peer-deps file:/shared/deepiri-shared-utils \
  && cd /shared/deepiri-shared-utils \
  && npm ci --omit=dev --legacy-peer-deps \
  && cd /app \
