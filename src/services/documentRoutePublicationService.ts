@@ -100,7 +100,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function toJsonValue(value: unknown): JsonValue | undefined {
+function isValidDocumentId(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function assertLeaseRoutePublicationInput(input: PublishLeaseRoutesInput): void {
+  if (!input?.lease || !isValidDocumentId(input.lease.id)) {
+    throw new Error('Validation Error: Missing primary document ID for lease.');
+  }
+}
+
+function assertContractRoutePublicationInput(input: PublishContractRoutesInput): void {
+  if (!input?.contract || !isValidDocumentId(input.contract.id)) {
+    throw new Error('Validation Error: Missing primary document ID for contract.');
+  }
+}
+
+function toJsonValue(value: unknown, seen: WeakSet<object> = new WeakSet<object>()): JsonValue | undefined {
   if (value === undefined) {
     return undefined;
   }
@@ -119,29 +135,56 @@ function toJsonValue(value: unknown): JsonValue | undefined {
   }
 
   if (Array.isArray(value)) {
-    return value
-      .map((item) => toJsonValue(item))
-      .filter((item): item is JsonValue => item !== undefined);
+    if (seen.has(value)) {
+      return undefined;
+    }
+
+    seen.add(value);
+
+    try {
+      return value
+        .map((item) => toJsonValue(item, seen))
+        .filter((item): item is JsonValue => item !== undefined);
+    } finally {
+      seen.delete(value);
+    }
   }
 
   if (isRecord(value)) {
-    return cleanJsonObject(value);
+    if (seen.has(value)) {
+      return undefined;
+    }
+
+    return cleanJsonObject(value, seen);
   }
 
   return String(value);
 }
 
-function cleanJsonObject(input: Record<string, unknown>): JsonObject {
-  const output: JsonObject = {};
-
-  for (const [key, value] of Object.entries(input)) {
-    const jsonValue = toJsonValue(value);
-    if (jsonValue !== undefined) {
-      output[key] = jsonValue;
-    }
+function cleanJsonObject(
+  input: Record<string, unknown>,
+  seen: WeakSet<object> = new WeakSet<object>()
+): JsonObject {
+  if (seen.has(input)) {
+    return {};
   }
 
-  return output;
+  seen.add(input);
+
+  const output: JsonObject = {};
+
+  try {
+    for (const [key, value] of Object.entries(input)) {
+      const jsonValue = toJsonValue(value, seen);
+      if (jsonValue !== undefined) {
+        output[key] = jsonValue;
+      }
+    }
+
+    return output;
+  } finally {
+    seen.delete(input);
+  }
 }
 
 function asJsonValue(value: unknown): JsonValue {
@@ -161,7 +204,7 @@ function limitText(value: unknown, limit: number): LimitedText {
 
 function stringifyTrainingOutput(value: unknown): string {
   try {
-    return JSON.stringify(value ?? {});
+    return JSON.stringify(toJsonValue(value) ?? {});
   } catch {
     return String(value ?? '');
   }
@@ -474,6 +517,8 @@ export class DocumentRoutePublicationService {
   }
 
   async publishLeaseRoutes(input: PublishLeaseRoutesInput): Promise<DocumentRoutePublicationResult> {
+    assertLeaseRoutePublicationInput(input);
+
     const result = await this.router.route(this.buildLeasePlanningInput(input));
     const summary = summarizeRoutingResult(result, new Date().toISOString());
 
@@ -488,6 +533,8 @@ export class DocumentRoutePublicationService {
   }
 
   async publishContractRoutes(input: PublishContractRoutesInput): Promise<DocumentRoutePublicationResult> {
+    assertContractRoutePublicationInput(input);
+
     const result = await this.router.route(this.buildContractPlanningInput(input));
     const summary = summarizeRoutingResult(result, new Date().toISOString());
 
