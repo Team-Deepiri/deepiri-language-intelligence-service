@@ -25,53 +25,57 @@ const DOCUMENT_ROUTE_DESTINATIONS: DocumentRouteDestination[] = [
   'training',
 ];
 
-type DocumentEntityType = 'lease' | 'contract';
-
-interface RouteableDocument {
+export interface RouteableDocument {
   id: string;
+  title?: string | null;
   documentUrl: string;
   documentStorageKey?: string | null;
-  documentType?: string | null;
+  contentType?: string | null;
   fileSize?: number | null;
   userId?: string | null;
   organizationId?: string | null;
+  fingerprint?: string | null;
+  metadata?: unknown;
 }
 
-export interface LeaseRoutingDocument extends RouteableDocument {
-  leaseNumber: string;
-  tenantName: string;
-  landlordName?: string | null;
-  propertyAddress: string;
-  propertyType?: string | null;
-  extractionConfidence?: number | null;
-}
-
-export interface ContractRoutingDocument extends RouteableDocument {
-  contractNumber: string;
-  contractName: string;
-  partyA: string;
-  partyB: string;
-  contractType?: string | null;
-  jurisdiction?: string | null;
-  extractionConfidence?: number | null;
-}
-
-export interface PublishLeaseRoutesInput {
-  lease: LeaseRoutingDocument;
+export interface PublishDocumentRoutesInput {
+  document: RouteableDocument;
+  documentType: string;
+  schemaId: string;
+  schemaVersion: string;
   rawText: string;
-  abstractedTerms: unknown;
-  qualityScore?: number | null;
-  versionNumber: number;
+  structuredOutput: unknown;
+  qualityScore?: number | string | null;
+  versionNumber?: number | string | null;
+  manifestVersion?: string | number | null;
   processingTimeMs: number;
+  destinations?: DocumentRouteDestination[];
+  classification?: unknown;
+  metadata?: unknown;
+  trainingInstruction?: string;
+  trainingCategory?: string;
+  trainingOutput?: unknown;
+  embeddingModel?: string;
 }
 
-export interface PublishContractRoutesInput {
-  contract: ContractRoutingDocument;
+interface NormalizedDocumentRouteInput {
+  document: RouteableDocument;
+  documentType: string;
+  schemaId: string;
+  schemaVersion: string;
   rawText: string;
-  abstractedTerms: unknown;
-  qualityScore?: number | null;
-  versionNumber: number;
+  structuredOutput: unknown;
+  qualityScore: number;
+  manifestVersion: string;
+  versionNumber?: number | string | null;
   processingTimeMs: number;
+  destinations: DocumentRouteDestination[];
+  classification: JsonValue;
+  metadata: JsonObject;
+  trainingInstruction: string;
+  trainingCategory: string;
+  trainingOutput: unknown;
+  embeddingModel?: string;
 }
 
 export interface DocumentRoutePublicationSummary {
@@ -104,16 +108,22 @@ function isValidDocumentId(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
-function assertLeaseRoutePublicationInput(input: PublishLeaseRoutesInput): void {
-  if (!input?.lease || !isValidDocumentId(input.lease.id)) {
-    throw new Error('Validation Error: Missing primary document ID for lease.');
+function normalizeRequiredString(value: unknown, label: string): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`Validation Error: Missing ${label}.`);
   }
+
+  return value.trim();
 }
 
-function assertContractRoutePublicationInput(input: PublishContractRoutesInput): void {
-  if (!input?.contract || !isValidDocumentId(input.contract.id)) {
-    throw new Error('Validation Error: Missing primary document ID for contract.');
+function assertDocumentRoutePublicationInput(input: PublishDocumentRoutesInput): void {
+  if (!input?.document || !isValidDocumentId(input.document.id)) {
+    throw new Error('Validation Error: Missing primary document ID.');
   }
+
+  normalizeRequiredString(input.documentType, 'dynamic document type');
+  normalizeRequiredString(input.schemaId, 'document schema ID');
+  normalizeRequiredString(input.schemaVersion, 'document schema version');
 }
 
 function toJsonValue(value: unknown, seen: WeakSet<object> = new WeakSet<object>()): JsonValue | undefined {
@@ -221,16 +231,16 @@ function normalizeQualityScore(...values: Array<number | string | null | undefin
   return 0;
 }
 
-function buildManifestVersion(entityType: DocumentEntityType, versionNumber: number): string {
-  return `${entityType}:${versionNumber}`;
+function buildDocumentManifestVersion(versionNumber?: number | string | null): string {
+  const version = versionNumber == null || String(versionNumber).trim().length === 0
+    ? 'unversioned'
+    : String(versionNumber).trim();
+
+  return `document:${version}`;
 }
 
-function buildCorrelationId(
-  entityType: DocumentEntityType,
-  documentId: string,
-  manifestVersion: string
-): string {
-  return `${entityType}:${documentId}:${manifestVersion}`;
+function buildCorrelationId(documentId: string, manifestVersion: string): string {
+  return `document:${documentId}:${manifestVersion}`;
 }
 
 function buildStorageReference(document: RouteableDocument): StorageReference {
@@ -238,7 +248,7 @@ function buildStorageReference(document: RouteableDocument): StorageReference {
     provider: 'object-storage',
     key: document.documentStorageKey ?? undefined,
     uri: document.documentUrl,
-    contentType: document.documentType ?? undefined,
+    contentType: document.contentType ?? undefined,
     sizeBytes: document.fileSize ?? undefined,
   };
 }
@@ -283,24 +293,33 @@ function buildTrainingPayload(input: {
 }
 
 function buildBaseMetadata(input: {
-  entityType: DocumentEntityType;
+  documentType: string;
+  schemaId: string;
+  schemaVersion: string;
   document: RouteableDocument;
-  versionNumber: number;
+  versionNumber?: number | string | null;
   processingTimeMs: number;
   rawText: LimitedText;
   trainingOutput: LimitedText;
+  metadata: JsonObject;
 }): JsonObject {
   return cleanJsonObject({
+    ...input.metadata,
     source: {
       service: 'language-intelligence-service',
-      entityType: input.entityType,
-      entityId: input.document.id,
+      entityType: 'document',
+      documentId: input.document.id,
       versionNumber: input.versionNumber,
+    },
+    schema: {
+      documentType: input.documentType,
+      schemaId: input.schemaId,
+      schemaVersion: input.schemaVersion,
     },
     document: {
       uri: input.document.documentUrl,
       storageKey: input.document.documentStorageKey,
-      documentType: input.document.documentType,
+      contentType: input.document.contentType,
       fileSize: input.document.fileSize,
     },
     processing: {
@@ -317,6 +336,75 @@ function buildBaseMetadata(input: {
       organizationId: input.document.organizationId,
     },
   });
+}
+
+function buildClassification(input: {
+  documentType: string;
+  schemaId: string;
+  schemaVersion: string;
+  classification: unknown;
+}): JsonValue {
+  const base = {
+    documentType: input.documentType,
+    schemaId: input.schemaId,
+    schemaVersion: input.schemaVersion,
+  };
+
+  if (input.classification === undefined) {
+    return cleanJsonObject(base);
+  }
+
+  if (isRecord(input.classification)) {
+    return cleanJsonObject({
+      ...base,
+      ...input.classification,
+    });
+  }
+
+  return cleanJsonObject({
+    ...base,
+    value: input.classification,
+  });
+}
+
+function normalizeDocumentRouteInput(
+  input: PublishDocumentRoutesInput
+): NormalizedDocumentRouteInput {
+  assertDocumentRoutePublicationInput(input);
+
+  const documentType = normalizeRequiredString(input.documentType, 'dynamic document type');
+  const schemaId = normalizeRequiredString(input.schemaId, 'document schema ID');
+  const schemaVersion = normalizeRequiredString(input.schemaVersion, 'document schema version');
+  const manifestVersion = input.manifestVersion == null || String(input.manifestVersion).trim().length === 0
+    ? buildDocumentManifestVersion(input.versionNumber)
+    : String(input.manifestVersion).trim();
+
+  return {
+    document: input.document,
+    documentType,
+    schemaId,
+    schemaVersion,
+    rawText: input.rawText,
+    structuredOutput: input.structuredOutput,
+    qualityScore: normalizeQualityScore(input.qualityScore),
+    manifestVersion,
+    versionNumber: input.versionNumber,
+    processingTimeMs: input.processingTimeMs,
+    destinations: input.destinations ?? DOCUMENT_ROUTE_DESTINATIONS,
+    classification: buildClassification({
+      documentType,
+      schemaId,
+      schemaVersion,
+      classification: input.classification,
+    }),
+    metadata: isRecord(input.metadata) ? cleanJsonObject(input.metadata) : {},
+    trainingInstruction:
+      input.trainingInstruction
+      ?? 'Extract structured document intelligence from the source document according to the attached schema.',
+    trainingCategory: input.trainingCategory ?? 'document_extraction',
+    trainingOutput: input.trainingOutput ?? input.structuredOutput,
+    embeddingModel: input.embeddingModel,
+  };
 }
 
 function summarizeRoutingResult(result: RoutingResult, publishedAt: string): DocumentRoutePublicationResult {
@@ -382,164 +470,90 @@ export class DocumentRoutePublicationService {
     this.router = new DocumentProducerRouter(publish);
   }
 
-  getLeaseManifestVersion(versionNumber: number): string {
-    return buildManifestVersion('lease', versionNumber);
+  getDocumentManifestVersion(versionNumber?: number | string | null): string {
+    return buildDocumentManifestVersion(versionNumber);
   }
 
-  getContractManifestVersion(versionNumber: number): string {
-    return buildManifestVersion('contract', versionNumber);
-  }
-
-  buildLeasePlanningInput(input: PublishLeaseRoutesInput): DocumentRoutePlanningInput {
-    const qualityScore = normalizeQualityScore(
-      input.qualityScore,
-      input.lease.extractionConfidence
-    );
-    const rawText = limitText(input.rawText, DOCUMENT_ROUTE_TEXT_CHAR_LIMIT);
+  buildDocumentPlanningInput(input: PublishDocumentRoutesInput): DocumentRoutePlanningInput {
+    const normalized = normalizeDocumentRouteInput(input);
+    const rawText = limitText(normalized.rawText, DOCUMENT_ROUTE_TEXT_CHAR_LIMIT);
     const trainingOutput = limitText(
-      stringifyTrainingOutput(input.abstractedTerms),
+      stringifyTrainingOutput(normalized.trainingOutput),
       DOCUMENT_ROUTE_TRAINING_OUTPUT_CHAR_LIMIT
     );
-    const manifestVersion = this.getLeaseManifestVersion(input.versionNumber);
-    const storage = buildStorageReference(input.lease);
+    const storage = buildStorageReference(normalized.document);
 
     return {
       manifest: {
-        documentId: input.lease.id,
-        manifestVersion,
-        destinations: DOCUMENT_ROUTE_DESTINATIONS,
-        qualityScore,
-        classification: cleanJsonObject({
-          documentKind: 'lease',
-          propertyType: input.lease.propertyType,
-        }),
-        structuredOutput: asJsonValue(input.abstractedTerms),
+        documentId: normalized.document.id,
+        manifestVersion: normalized.manifestVersion,
+        destinations: normalized.destinations,
+        qualityScore: normalized.qualityScore,
+        documentType: normalized.documentType,
+        schemaId: normalized.schemaId,
+        schemaVersion: normalized.schemaVersion,
+        classification: normalized.classification,
+        structuredOutput: asJsonValue(normalized.structuredOutput),
         trainingPayload: buildTrainingPayload({
-          instruction: 'Extract structured lease intelligence from the source document.',
+          instruction: normalized.trainingInstruction,
           rawText,
           output: trainingOutput,
-          category: 'lease_abstraction',
-          qualityScore,
+          category: normalized.trainingCategory,
+          qualityScore: normalized.qualityScore,
         }),
-        correlationId: buildCorrelationId('lease', input.lease.id, manifestVersion),
+        embeddingModel: normalized.embeddingModel,
+        correlationId: buildCorrelationId(
+          normalized.document.id,
+          normalized.manifestVersion
+        ),
+        fingerprint: normalized.document.fingerprint ?? undefined,
       },
       document: {
-        documentId: input.lease.id,
-        title: `Lease ${input.lease.leaseNumber}`,
-        sourceType: 'lease',
-        mimeType: input.lease.documentType ?? undefined,
+        documentId: normalized.document.id,
+        title: normalized.document.title ?? undefined,
+        sourceType: normalized.documentType,
+        documentType: normalized.documentType,
+        schemaId: normalized.schemaId,
+        schemaVersion: normalized.schemaVersion,
+        mimeType: normalized.document.contentType ?? undefined,
+        fingerprint: normalized.document.fingerprint ?? undefined,
         storage,
         metadata: cleanJsonObject({
-          leaseNumber: input.lease.leaseNumber,
-          tenantName: input.lease.tenantName,
-          landlordName: input.lease.landlordName,
-          propertyAddress: input.lease.propertyAddress,
-          propertyType: input.lease.propertyType,
-          userId: input.lease.userId,
-          organizationId: input.lease.organizationId,
+          ...(isRecord(normalized.document.metadata)
+            ? cleanJsonObject(normalized.document.metadata)
+            : {}),
+          documentType: normalized.documentType,
+          schemaId: normalized.schemaId,
+          schemaVersion: normalized.schemaVersion,
+          userId: normalized.document.userId,
+          organizationId: normalized.document.organizationId,
         }),
       },
-      chunks: buildChunks(input.lease.id, rawText),
+      chunks: buildChunks(normalized.document.id, rawText),
       storageReferences: [storage],
       metadata: buildBaseMetadata({
-        entityType: 'lease',
-        document: input.lease,
-        versionNumber: input.versionNumber,
-        processingTimeMs: input.processingTimeMs,
+        documentType: normalized.documentType,
+        schemaId: normalized.schemaId,
+        schemaVersion: normalized.schemaVersion,
+        document: normalized.document,
+        versionNumber: normalized.versionNumber,
+        processingTimeMs: normalized.processingTimeMs,
         rawText,
         trainingOutput,
+        metadata: normalized.metadata,
       }),
     };
   }
 
-  buildContractPlanningInput(input: PublishContractRoutesInput): DocumentRoutePlanningInput {
-    const qualityScore = normalizeQualityScore(
-      input.qualityScore,
-      input.contract.extractionConfidence
-    );
-    const rawText = limitText(input.rawText, DOCUMENT_ROUTE_TEXT_CHAR_LIMIT);
-    const trainingOutput = limitText(
-      stringifyTrainingOutput(input.abstractedTerms),
-      DOCUMENT_ROUTE_TRAINING_OUTPUT_CHAR_LIMIT
-    );
-    const manifestVersion = this.getContractManifestVersion(input.versionNumber);
-    const storage = buildStorageReference(input.contract);
-
-    return {
-      manifest: {
-        documentId: input.contract.id,
-        manifestVersion,
-        destinations: DOCUMENT_ROUTE_DESTINATIONS,
-        qualityScore,
-        classification: cleanJsonObject({
-          documentKind: 'contract',
-          contractType: input.contract.contractType,
-          jurisdiction: input.contract.jurisdiction,
-        }),
-        structuredOutput: asJsonValue(input.abstractedTerms),
-        trainingPayload: buildTrainingPayload({
-          instruction: 'Extract structured contract intelligence from the source document.',
-          rawText,
-          output: trainingOutput,
-          category: 'contract_intelligence',
-          qualityScore,
-        }),
-        correlationId: buildCorrelationId('contract', input.contract.id, manifestVersion),
-      },
-      document: {
-        documentId: input.contract.id,
-        title: input.contract.contractName,
-        sourceType: 'contract',
-        mimeType: input.contract.documentType ?? undefined,
-        storage,
-        metadata: cleanJsonObject({
-          contractNumber: input.contract.contractNumber,
-          contractName: input.contract.contractName,
-          partyA: input.contract.partyA,
-          partyB: input.contract.partyB,
-          contractType: input.contract.contractType,
-          jurisdiction: input.contract.jurisdiction,
-          userId: input.contract.userId,
-          organizationId: input.contract.organizationId,
-        }),
-      },
-      chunks: buildChunks(input.contract.id, rawText),
-      storageReferences: [storage],
-      metadata: buildBaseMetadata({
-        entityType: 'contract',
-        document: input.contract,
-        versionNumber: input.versionNumber,
-        processingTimeMs: input.processingTimeMs,
-        rawText,
-        trainingOutput,
-      }),
-    };
-  }
-
-  async publishLeaseRoutes(input: PublishLeaseRoutesInput): Promise<DocumentRoutePublicationResult> {
-    assertLeaseRoutePublicationInput(input);
-
-    const result = await this.router.route(this.buildLeasePlanningInput(input));
+  async publishDocumentRoutes(input: PublishDocumentRoutesInput): Promise<DocumentRoutePublicationResult> {
+    const result = await this.router.route(this.buildDocumentPlanningInput(input));
     const summary = summarizeRoutingResult(result, new Date().toISOString());
 
-    logger.info('Published lease document routing streams', {
-      leaseId: input.lease.id,
-      manifestVersion: summary.manifestVersion,
-      planned: summary.planned.map((route) => route.streamName),
-      skipped: summary.skipped,
-    });
-
-    return summary;
-  }
-
-  async publishContractRoutes(input: PublishContractRoutesInput): Promise<DocumentRoutePublicationResult> {
-    assertContractRoutePublicationInput(input);
-
-    const result = await this.router.route(this.buildContractPlanningInput(input));
-    const summary = summarizeRoutingResult(result, new Date().toISOString());
-
-    logger.info('Published contract document routing streams', {
-      contractId: input.contract.id,
+    logger.info('Published document routing streams', {
+      documentId: input.document.id,
+      documentType: input.documentType,
+      schemaId: input.schemaId,
+      schemaVersion: input.schemaVersion,
       manifestVersion: summary.manifestVersion,
       planned: summary.planned.map((route) => route.streamName),
       skipped: summary.skipped,

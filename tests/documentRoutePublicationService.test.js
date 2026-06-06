@@ -19,41 +19,43 @@ function createServiceHarness() {
   return { published, service };
 }
 
-function leaseFixture(overrides = {}) {
+function documentFixture(overrides = {}) {
   return {
-    id: 'lease-1',
-    leaseNumber: 'L-100',
-    tenantName: 'Acme Tenant',
-    landlordName: 'Deepiri Landlord',
-    propertyAddress: '100 Main Street',
-    propertyType: 'office',
-    documentUrl: 's3://language-intelligence-documents/leases/lease-1.pdf',
-    documentStorageKey: 'leases/lease-1.pdf',
-    documentType: 'application/pdf',
+    id: 'document-1',
+    title: 'Operating Policy',
+    documentUrl: 's3://language-intelligence-documents/documents/document-1.pdf',
+    documentStorageKey: 'documents/document-1.pdf',
+    contentType: 'application/pdf',
     fileSize: 4096,
     userId: 'user-1',
     organizationId: 'org-1',
-    extractionConfidence: 0.92,
     ...overrides,
   };
 }
 
-function contractFixture(overrides = {}) {
+function routeInput(overrides = {}) {
   return {
-    id: 'contract-1',
-    contractNumber: 'C-100',
-    contractName: 'Vendor Master Services Agreement',
-    partyA: 'Deepiri',
-    partyB: 'Vendor Co',
-    contractType: 'msa',
-    jurisdiction: 'NY',
-    documentUrl: 's3://language-intelligence-documents/contracts/contract-1.pdf',
-    documentStorageKey: 'contracts/contract-1.pdf',
-    documentType: 'application/pdf',
-    fileSize: 8192,
-    userId: 'user-1',
-    organizationId: 'org-1',
-    extractionConfidence: 0.88,
+    document: documentFixture(),
+    documentType: 'policy',
+    schemaId: 'generic.document',
+    schemaVersion: '1.0',
+    rawText: 'policy language '.repeat(3000),
+    structuredOutput: {
+      summary: 'A dynamic policy extraction.',
+      entities: [{ type: 'party', value: 'Deepiri' }],
+    },
+    qualityScore: 0.92,
+    versionNumber: 3,
+    processingTimeMs: 42,
+    classification: {
+      businessDomain: 'operations',
+    },
+    metadata: {
+      legacy: {
+        sourceModel: 'lease',
+        leaseNumber: 'L-100',
+      },
+    },
     ...overrides,
   };
 }
@@ -69,51 +71,59 @@ test('uses manifest version, not fingerprint, for route idempotency keys', () =>
   assert.equal(key, 'document-route:doc-1:training:manifest:manifest-2');
 });
 
-test('publishes lease vectorize, structured, and training routes when quality is high enough', async () => {
+test('publishes dynamic document vectorize, structured, and training routes', async () => {
   const { published, service } = createServiceHarness();
-  const rawText = 'rent due monthly '.repeat(3000);
 
-  const result = await service.publishLeaseRoutes({
-    lease: leaseFixture(),
-    rawText,
-    abstractedTerms: { rent: { amount: 1000, currency: 'USD' } },
-    qualityScore: 0.92,
-    versionNumber: 1,
-    processingTimeMs: 42,
-  });
+  const result = await service.publishDocumentRoutes(routeInput());
 
   assert.equal(result.status, 'published');
+  assert.equal(result.manifestVersion, 'document:3');
   assert.deepEqual(
     published.map((item) => item.streamName),
     ['document.vectorize', 'document.structured', 'document.training']
   );
 
   const vectorizeEvent = published[0].event;
-  assert.equal(vectorizeEvent.schemaVersion, '1.0');
-  assert.equal(vectorizeEvent.correlation_id, 'lease:lease-1:lease:1');
-  assert.equal(vectorizeEvent.data.routeId, 'document-route:lease-1:vectorize:manifest:lease:1');
+  assert.equal(vectorizeEvent.schemaVersion, 'document.route.v1');
+  assert.equal(vectorizeEvent.correlation_id, 'document:document-1:document:3');
+  assert.equal(vectorizeEvent.data.routeId, 'document-route:document-1:vectorize:manifest:document:3');
+  assert.equal(vectorizeEvent.data.documentType, 'policy');
+  assert.equal(vectorizeEvent.data.schemaId, 'generic.document');
+  assert.equal(vectorizeEvent.data.schemaVersion, '1.0');
+  assert.equal(vectorizeEvent.data.document.documentType, 'policy');
+  assert.equal(vectorizeEvent.data.document.schemaId, 'generic.document');
+  assert.equal(vectorizeEvent.data.document.schemaVersion, '1.0');
+  assert.equal(vectorizeEvent.data.document.mimeType, 'application/pdf');
   assert.equal(vectorizeEvent.data.chunks[0].text.length, DOCUMENT_ROUTE_TEXT_CHAR_LIMIT);
   assert.equal(vectorizeEvent.data.chunks[0].metadata.truncated, true);
-
-  const trainingEvent = published[2].event;
-  assert.equal(trainingEvent.data.trainingPayload.category, 'lease_abstraction');
-  assert.equal(trainingEvent.data.trainingPayload.quality_score, 0.92);
-  assert.equal(trainingEvent.data.trainingPayload.input.length, DOCUMENT_ROUTE_TEXT_CHAR_LIMIT);
+  assert.equal(vectorizeEvent.data.metadata.legacy.sourceModel, 'lease');
+  assert.equal(vectorizeEvent.data.metadata.legacy.leaseNumber, 'L-100');
 });
 
-test('rejects lease route publication when the lease ID is missing', async () => {
+test('keeps legacy identifiers under metadata instead of the route contract', async () => {
+  const { published, service } = createServiceHarness();
+
+  await service.publishDocumentRoutes(routeInput());
+
+  const payload = published[0].event.data;
+  assert.equal(payload.leaseId, undefined);
+  assert.equal(payload.contractId, undefined);
+  assert.equal(payload.leaseNumber, undefined);
+  assert.equal(payload.contractNumber, undefined);
+  assert.equal(payload.metadata.legacy.leaseNumber, 'L-100');
+});
+
+test('rejects document route publication when required dynamic fields are missing', async () => {
   const { published, service } = createServiceHarness();
 
   await assert.rejects(
-    service.publishLeaseRoutes({
-      lease: leaseFixture({ id: undefined }),
-      rawText: 'lease text',
-      abstractedTerms: { rent: { amount: 1000 } },
-      qualityScore: 0.92,
-      versionNumber: 1,
-      processingTimeMs: 42,
-    }),
-    /Missing primary document ID for lease/
+    service.publishDocumentRoutes(routeInput({ document: documentFixture({ id: undefined }) })),
+    /Missing primary document ID/
+  );
+
+  await assert.rejects(
+    service.publishDocumentRoutes(routeInput({ schemaId: '   ' })),
+    /Missing document schema ID/
   );
 
   assert.equal(published.length, 0);
@@ -122,14 +132,7 @@ test('rejects lease route publication when the lease ID is missing', async () =>
 test('skips document.training when the quality score is below the Helox threshold', async () => {
   const { published, service } = createServiceHarness();
 
-  const result = await service.publishLeaseRoutes({
-    lease: leaseFixture({ extractionConfidence: 0.39 }),
-    rawText: 'short lease text',
-    abstractedTerms: { rent: { amount: 1000 } },
-    qualityScore: 0.39,
-    versionNumber: 1,
-    processingTimeMs: 12,
-  });
+  const result = await service.publishDocumentRoutes(routeInput({ qualityScore: 0.39 }));
 
   assert.deepEqual(
     published.map((item) => item.streamName),
@@ -141,28 +144,18 @@ test('skips document.training when the quality score is below the Helox threshol
 
 test('drops circular references while publishing structured and training payloads', async () => {
   const { published, service } = createServiceHarness();
-  const abstractedTerms = {
-    rent: { amount: 1000, currency: 'USD' },
+  const structuredOutput = {
+    summary: 'A dynamic extraction.',
   };
-  abstractedTerms.self = abstractedTerms;
+  structuredOutput.self = structuredOutput;
 
-  const result = await service.publishLeaseRoutes({
-    lease: leaseFixture(),
-    rawText: 'rent due monthly',
-    abstractedTerms,
-    qualityScore: 0.92,
-    versionNumber: 1,
-    processingTimeMs: 42,
-  });
+  const result = await service.publishDocumentRoutes(routeInput({ structuredOutput }));
 
   assert.equal(result.status, 'published');
 
   const structuredEvent = published.find((item) => item.streamName === 'document.structured');
   assert.ok(structuredEvent);
-  assert.deepEqual(
-    structuredEvent.event.data.structuredOutput.rent,
-    { amount: 1000, currency: 'USD' }
-  );
+  assert.equal(structuredEvent.event.data.structuredOutput.summary, 'A dynamic extraction.');
   assert.equal(
     Object.prototype.hasOwnProperty.call(structuredEvent.event.data.structuredOutput, 'self'),
     false
@@ -171,54 +164,23 @@ test('drops circular references while publishing structured and training payload
   const trainingEvent = published.find((item) => item.streamName === 'document.training');
   assert.ok(trainingEvent);
   const trainingOutput = JSON.parse(trainingEvent.event.data.trainingPayload.output);
-  assert.deepEqual(trainingOutput.rent, { amount: 1000, currency: 'USD' });
+  assert.equal(trainingOutput.summary, 'A dynamic extraction.');
   assert.equal(Object.prototype.hasOwnProperty.call(trainingOutput, 'self'), false);
 });
 
-test('publishes contract routes with contract-specific routing metadata', async () => {
+test('uses caller-provided manifestVersion when present', async () => {
   const { published, service } = createServiceHarness();
 
-  const result = await service.publishContractRoutes({
-    contract: contractFixture(),
-    rawText: 'contract terms and obligations',
-    abstractedTerms: { obligations: [{ description: 'Maintain insurance' }] },
-    qualityScore: 0.88,
-    versionNumber: 2,
-    processingTimeMs: 80,
-  });
+  const result = await service.publishDocumentRoutes(routeInput({
+    manifestVersion: 'schema-run:2026-06-05',
+    versionNumber: 99,
+  }));
 
-  assert.equal(result.manifestVersion, 'contract:2');
-  assert.deepEqual(
-    published.map((item) => item.streamName),
-    ['document.vectorize', 'document.structured', 'document.training']
-  );
-  assert.equal(published[0].event.correlation_id, 'contract:contract-1:contract:2');
+  assert.equal(result.manifestVersion, 'schema-run:2026-06-05');
   assert.equal(
     published[0].event.data.routeId,
-    'document-route:contract-1:vectorize:manifest:contract:2'
+    'document-route:document-1:vectorize:manifest:schema-run:2026-06-05'
   );
-  assert.equal(
-    published[2].event.data.trainingPayload.category,
-    'contract_intelligence'
-  );
-});
-
-test('rejects contract route publication when the contract ID is blank', async () => {
-  const { published, service } = createServiceHarness();
-
-  await assert.rejects(
-    service.publishContractRoutes({
-      contract: contractFixture({ id: '   ' }),
-      rawText: 'contract text',
-      abstractedTerms: { obligations: [{ description: 'Maintain insurance' }] },
-      qualityScore: 0.88,
-      versionNumber: 2,
-      processingTimeMs: 80,
-    }),
-    /Missing primary document ID for contract/
-  );
-
-  assert.equal(published.length, 0);
 });
 
 test('drops circular references from existing document routing metadata', () => {
@@ -227,14 +189,14 @@ test('drops circular references from existing document routing metadata', () => 
 
   const metadata = buildDocumentRoutingMetadata(existingMetadata, {
     status: 'published',
-    documentId: 'lease-1',
-    manifestVersion: 'lease:1',
-    publishedAt: '2026-05-30T00:00:00.000Z',
+    documentId: 'document-1',
+    manifestVersion: 'document:3',
+    publishedAt: '2026-06-05T00:00:00.000Z',
     planned: [
       {
         destination: 'vectorize',
         streamName: 'document.vectorize',
-        routeId: 'document-route:lease-1:vectorize:manifest:lease:1',
+        routeId: 'document-route:document-1:vectorize:manifest:document:3',
       },
     ],
     skipped: [],
@@ -242,5 +204,5 @@ test('drops circular references from existing document routing metadata', () => 
 
   assert.equal(metadata.requestId, 'request-1');
   assert.equal(Object.prototype.hasOwnProperty.call(metadata, 'self'), false);
-  assert.equal(metadata.documentRouting.documentId, 'lease-1');
+  assert.equal(metadata.documentRouting.documentId, 'document-1');
 });

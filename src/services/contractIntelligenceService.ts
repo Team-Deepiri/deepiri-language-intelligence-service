@@ -312,13 +312,49 @@ export class ContractIntelligenceService {
     versionNumber: number;
     processingTimeMs: number;
   }): Promise<void> {
-    const manifestVersion = documentRoutePublicationService.getContractManifestVersion(
+    const manifestVersion = documentRoutePublicationService.getDocumentManifestVersion(
       input.versionNumber
     );
 
     let routingResult: DocumentRoutePublicationResult;
     try {
-      routingResult = await documentRoutePublicationService.publishContractRoutes(input);
+      routingResult = await documentRoutePublicationService.publishDocumentRoutes({
+        document: {
+          id: input.contract.id,
+          title: input.contract.contractName,
+          documentUrl: input.contract.documentUrl,
+          documentStorageKey: input.contract.documentStorageKey,
+          contentType: input.contract.documentType,
+          fileSize: input.contract.fileSize,
+          userId: input.contract.userId,
+          organizationId: input.contract.organizationId,
+        },
+        documentType: 'contract',
+        schemaId: 'legacy.contract',
+        schemaVersion: '1.0',
+        rawText: input.rawText,
+        structuredOutput: input.abstractedTerms,
+        qualityScore: input.qualityScore,
+        versionNumber: input.versionNumber,
+        manifestVersion,
+        processingTimeMs: input.processingTimeMs,
+        classification: {
+          legacySourceModel: 'contract',
+          contractType: input.contract.contractType,
+          jurisdiction: input.contract.jurisdiction,
+        },
+        metadata: {
+          legacy: {
+            sourceModel: 'contract',
+            contractNumber: input.contract.contractNumber,
+            contractName: input.contract.contractName,
+            partyA: input.contract.partyA,
+            partyB: input.contract.partyB,
+            contractType: input.contract.contractType,
+            jurisdiction: input.contract.jurisdiction,
+          },
+        },
+      });
     } catch (error: any) {
       const errorMessage = error.message || String(error);
       logger.warn('Contract document route publication failed', {

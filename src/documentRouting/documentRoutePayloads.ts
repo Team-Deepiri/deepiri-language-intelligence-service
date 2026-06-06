@@ -42,6 +42,9 @@ function buildBasePayload(
     manifestVersion: manifest.manifestVersion,
     destination,
     qualityScore: manifest.qualityScore,
+    documentType: manifest.documentType ?? input.document.documentType,
+    schemaId: manifest.schemaId ?? input.document.schemaId,
+    schemaVersion: manifest.schemaVersion ?? input.document.schemaVersion,
     correlationId: manifest.correlationId,
     metadata: mergeRoutingMetadata(
       input.metadata,

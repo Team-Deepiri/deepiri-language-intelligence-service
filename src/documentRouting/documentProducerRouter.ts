@@ -38,7 +38,7 @@ export class DocumentProducerRouter {
     const action = `document.${payload.destination}.route`;
 
     const event: DocumentRouteStreamEvent = {
-      schemaVersion: '1.0',
+      schemaVersion: 'document.route.v1',
       event: action,
       timestamp: new Date().toISOString(),
       source: this.source,

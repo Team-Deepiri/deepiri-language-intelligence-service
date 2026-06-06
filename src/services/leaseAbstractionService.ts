@@ -184,13 +184,47 @@ export class LeaseAbstractionService {
     versionNumber: number;
     processingTimeMs: number;
   }): Promise<void> {
-    const manifestVersion = documentRoutePublicationService.getLeaseManifestVersion(
+    const manifestVersion = documentRoutePublicationService.getDocumentManifestVersion(
       input.versionNumber
     );
 
     let routingResult: DocumentRoutePublicationResult;
     try {
-      routingResult = await documentRoutePublicationService.publishLeaseRoutes(input);
+      routingResult = await documentRoutePublicationService.publishDocumentRoutes({
+        document: {
+          id: input.lease.id,
+          title: `Lease ${input.lease.leaseNumber}`,
+          documentUrl: input.lease.documentUrl,
+          documentStorageKey: input.lease.documentStorageKey,
+          contentType: input.lease.documentType,
+          fileSize: input.lease.fileSize,
+          userId: input.lease.userId,
+          organizationId: input.lease.organizationId,
+        },
+        documentType: 'lease',
+        schemaId: 'legacy.lease',
+        schemaVersion: '1.0',
+        rawText: input.rawText,
+        structuredOutput: input.abstractedTerms,
+        qualityScore: input.qualityScore,
+        versionNumber: input.versionNumber,
+        manifestVersion,
+        processingTimeMs: input.processingTimeMs,
+        classification: {
+          legacySourceModel: 'lease',
+          propertyType: input.lease.propertyType,
+        },
+        metadata: {
+          legacy: {
+            sourceModel: 'lease',
+            leaseNumber: input.lease.leaseNumber,
+            tenantName: input.lease.tenantName,
+            landlordName: input.lease.landlordName,
+            propertyAddress: input.lease.propertyAddress,
+            propertyType: input.lease.propertyType,
+          },
+        },
+      });
     } catch (error: any) {
       const errorMessage = error.message || String(error);
       logger.warn('Lease document route publication failed', {

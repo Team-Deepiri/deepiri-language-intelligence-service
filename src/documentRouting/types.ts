@@ -24,6 +24,9 @@ export interface DocumentReference {
   documentId: string;
   title?: string;
   sourceType?: string;
+  documentType?: string;
+  schemaId?: string;
+  schemaVersion?: string;
   mimeType?: string;
   fingerprint?: string;
   storage?: StorageReference;
@@ -62,6 +65,9 @@ export interface RoutingManifest {
   manifestVersion: string | number;
   destinations: DocumentRouteDestination[];
   qualityScore: number;
+  documentType?: string;
+  schemaId?: string;
+  schemaVersion?: string;
   classification?: JsonValue;
   structuredOutput?: JsonValue;
   trainingPayload?: EmbeddedTrainingPayload;
@@ -84,6 +90,9 @@ export interface DocumentRoutePayloadBase {
   manifestVersion: string | number;
   destination: DocumentRouteDestination;
   qualityScore: number;
+  documentType?: string;
+  schemaId?: string;
+  schemaVersion?: string;
   correlationId?: string;
   metadata?: JsonObject;
 }
