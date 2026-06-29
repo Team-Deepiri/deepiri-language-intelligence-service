@@ -60,6 +60,22 @@ export type TrainingIngestionPayload = EmbeddedTrainingPayload & {
   quality_score: number;
 };
 
+export interface ArtifactRequest {
+  artifactType?: string;
+  capability?: string;
+  schemaId?: string;
+  schemaVersion?: string;
+  templateId?: string;
+  instructions?: string;
+  metadata?: JsonObject;
+}
+
+export interface SourceRouteReference {
+  destination: DocumentRouteDestination;
+  streamName: DocumentRouteTopic;
+  schemaVersion: string;
+}
+
 export interface RoutingManifest {
   documentId: string;
   manifestVersion: string | number;
@@ -71,9 +87,11 @@ export interface RoutingManifest {
   classification?: JsonValue;
   structuredOutput?: JsonValue;
   trainingPayload?: EmbeddedTrainingPayload;
+  artifactRequests?: ArtifactRequest[];
   embeddingModel?: string;
   correlationId?: string;
   fingerprint?: string;
+  provenance?: JsonObject;
 }
 
 export interface DocumentRoutePlanningInput {
@@ -94,6 +112,9 @@ export interface DocumentRoutePayloadBase {
   schemaId?: string;
   schemaVersion?: string;
   correlationId?: string;
+  artifactRequests?: ArtifactRequest[];
+  sourceRoute?: SourceRouteReference;
+  provenance?: JsonObject;
   metadata?: JsonObject;
 }
 

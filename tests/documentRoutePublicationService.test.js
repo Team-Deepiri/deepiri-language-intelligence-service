@@ -56,6 +56,19 @@ function routeInput(overrides = {}) {
         leaseNumber: 'L-100',
       },
     },
+    artifactRequests: [
+      {
+        artifactType: 'document.extraction',
+        capability: 'cyrex.artifact_store',
+        schemaId: 'generic.document',
+        schemaVersion: '1.0',
+        templateId: 'generic.document.extraction.v1',
+      },
+    ],
+    provenance: {
+      extractionRunId: 'extraction-run-1',
+      sourcePipeline: 'document-route-publication-test',
+    },
     ...overrides,
   };
 }
@@ -86,10 +99,18 @@ test('publishes dynamic document vectorize, structured, and training routes', as
   const vectorizeEvent = published[0].event;
   assert.equal(vectorizeEvent.schemaVersion, 'document.route.v1');
   assert.equal(vectorizeEvent.correlation_id, 'document:document-1:document:3');
+  assert.equal(vectorizeEvent.payload, undefined);
+  assert.equal(vectorizeEvent.data.sourceRoute.streamName, 'document.vectorize');
+  assert.equal(vectorizeEvent.data.sourceRoute.schemaVersion, 'document.route.v1');
   assert.equal(vectorizeEvent.data.routeId, 'document-route:document-1:vectorize:manifest:document:3');
   assert.equal(vectorizeEvent.data.documentType, 'policy');
   assert.equal(vectorizeEvent.data.schemaId, 'generic.document');
   assert.equal(vectorizeEvent.data.schemaVersion, '1.0');
+  assert.equal(vectorizeEvent.data.artifactRequests[0].artifactType, 'document.extraction');
+  assert.equal(vectorizeEvent.data.artifactRequests[0].capability, 'cyrex.artifact_store');
+  assert.equal(vectorizeEvent.data.provenance.sourceService, 'language-intelligence-service');
+  assert.equal(vectorizeEvent.data.provenance.sourceDocumentId, 'document-1');
+  assert.equal(vectorizeEvent.data.provenance.extractionRunId, 'extraction-run-1');
   assert.equal(vectorizeEvent.data.document.documentType, 'policy');
   assert.equal(vectorizeEvent.data.document.schemaId, 'generic.document');
   assert.equal(vectorizeEvent.data.document.schemaVersion, '1.0');
@@ -110,6 +131,8 @@ test('keeps legacy identifiers under metadata instead of the route contract', as
   assert.equal(payload.contractId, undefined);
   assert.equal(payload.leaseNumber, undefined);
   assert.equal(payload.contractNumber, undefined);
+  assert.equal(payload.clauseId, undefined);
+  assert.equal(payload.obligationId, undefined);
   assert.equal(payload.metadata.legacy.leaseNumber, 'L-100');
 });
 

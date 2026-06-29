@@ -1,4 +1,4 @@
-import { DOCUMENT_ROUTE_TOPICS } from './documentRouteTopics';
+import { DOCUMENT_ROUTE_TOPICS, type DocumentRouteTopic } from './documentRouteTopics';
 import { buildRoutingMetadata, mergeRoutingMetadata } from './routingMetadata';
 import type {
   DocumentRouteDestination,
@@ -21,6 +21,17 @@ function destinationRequested(
   destination: DocumentRouteDestination
 ): boolean {
   return manifest.destinations.includes(destination);
+}
+
+function getRouteStreamName(destination: DocumentRouteDestination): DocumentRouteTopic {
+  switch (destination) {
+    case 'vectorize':
+      return DOCUMENT_ROUTE_TOPICS.VECTORIZE;
+    case 'structured':
+      return DOCUMENT_ROUTE_TOPICS.STRUCTURED;
+    case 'training':
+      return DOCUMENT_ROUTE_TOPICS.TRAINING;
+  }
 }
 
 function buildBasePayload(
@@ -46,6 +57,13 @@ function buildBasePayload(
     schemaId: manifest.schemaId ?? input.document.schemaId,
     schemaVersion: manifest.schemaVersion ?? input.document.schemaVersion,
     correlationId: manifest.correlationId,
+    artifactRequests: manifest.artifactRequests,
+    sourceRoute: {
+      destination,
+      streamName: getRouteStreamName(destination),
+      schemaVersion: 'document.route.v1',
+    },
+    provenance: manifest.provenance,
     metadata: mergeRoutingMetadata(
       input.metadata,
       routingMetadata

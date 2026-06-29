@@ -3,6 +3,7 @@ import {
   type DocumentRoutePublish,
 } from '../documentRouting/documentProducerRouter';
 import type {
+  ArtifactRequest,
   ChunkReference,
   DocumentRouteDestination,
   DocumentRoutePlanningInput,
@@ -52,6 +53,8 @@ export interface PublishDocumentRoutesInput {
   destinations?: DocumentRouteDestination[];
   classification?: unknown;
   metadata?: unknown;
+  artifactRequests?: unknown;
+  provenance?: unknown;
   trainingInstruction?: string;
   trainingCategory?: string;
   trainingOutput?: unknown;
@@ -72,6 +75,8 @@ interface NormalizedDocumentRouteInput {
   destinations: DocumentRouteDestination[];
   classification: JsonValue;
   metadata: JsonObject;
+  artifactRequests?: ArtifactRequest[];
+  provenance: JsonObject;
   trainingInstruction: string;
   trainingCategory: string;
   trainingOutput: unknown;
@@ -199,6 +204,26 @@ function cleanJsonObject(
 
 function asJsonValue(value: unknown): JsonValue {
   return toJsonValue(value) ?? null;
+}
+
+function normalizeArtifactRequests(value: unknown): ArtifactRequest[] | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  const requests = Array.isArray(value) ? value : [value];
+  const normalized = requests
+    .map((request) => {
+      if (!isRecord(request)) {
+        return undefined;
+      }
+
+      const cleaned = cleanJsonObject(request) as ArtifactRequest;
+      return Object.keys(cleaned).length > 0 ? cleaned : undefined;
+    })
+    .filter((request): request is ArtifactRequest => request !== undefined);
+
+  return normalized.length > 0 ? normalized : undefined;
 }
 
 function limitText(value: unknown, limit: number): LimitedText {
@@ -367,6 +392,31 @@ function buildClassification(input: {
   });
 }
 
+function buildProvenance(input: {
+  documentType: string;
+  schemaId: string;
+  schemaVersion: string;
+  manifestVersion: string;
+  document: RouteableDocument;
+  provenance: unknown;
+}): JsonObject {
+  const callerProvenance = isRecord(input.provenance)
+    ? cleanJsonObject(input.provenance)
+    : {};
+
+  return cleanJsonObject({
+    ...callerProvenance,
+    sourceService: 'language-intelligence-service',
+    sourceEntityType: 'document',
+    sourceDocumentId: input.document.id,
+    sourceDocumentFingerprint: input.document.fingerprint,
+    manifestVersion: input.manifestVersion,
+    documentType: input.documentType,
+    schemaId: input.schemaId,
+    schemaVersion: input.schemaVersion,
+  });
+}
+
 function normalizeDocumentRouteInput(
   input: PublishDocumentRoutesInput
 ): NormalizedDocumentRouteInput {
@@ -398,6 +448,15 @@ function normalizeDocumentRouteInput(
       classification: input.classification,
     }),
     metadata: isRecord(input.metadata) ? cleanJsonObject(input.metadata) : {},
+    artifactRequests: normalizeArtifactRequests(input.artifactRequests),
+    provenance: buildProvenance({
+      documentType,
+      schemaId,
+      schemaVersion,
+      manifestVersion,
+      document: input.document,
+      provenance: input.provenance,
+    }),
     trainingInstruction:
       input.trainingInstruction
       ?? 'Extract structured document intelligence from the source document according to the attached schema.',
@@ -501,12 +560,14 @@ export class DocumentRoutePublicationService {
           category: normalized.trainingCategory,
           qualityScore: normalized.qualityScore,
         }),
+        artifactRequests: normalized.artifactRequests,
         embeddingModel: normalized.embeddingModel,
         correlationId: buildCorrelationId(
           normalized.document.id,
           normalized.manifestVersion
         ),
         fingerprint: normalized.document.fingerprint ?? undefined,
+        provenance: normalized.provenance,
       },
       document: {
         documentId: normalized.document.id,
