@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { body, param, query } from 'express-validator';
+import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import { intelligenceDocumentService } from '../services/intelligenceDocumentService';
 import { obligationService } from '../services/obligationService';
@@ -10,6 +11,33 @@ import { validate } from '../middleware/inputValidation';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const uploadRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many upload requests, please try again later.' },
+});
+const listRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+const documentReadRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many document read requests, please try again later.' },
+});
+const reprocessRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many document reprocess requests, please try again later.' },
+});
 
 function parseOptionalJson<T>(raw: unknown, label: string): T | undefined {
   if (raw === undefined || raw === null || raw === '') return undefined;
@@ -42,6 +70,7 @@ function parseTags(raw: unknown): string[] {
 
 router.post(
   '/upload',
+  uploadRateLimiter,
   authenticate,
   upload.single('file'),
   validate([
@@ -127,6 +156,7 @@ router.post(
 
 router.get(
   '/',
+  listRateLimiter,
   authenticate,
   validate([
     query('documentKind').optional().isString(),
@@ -149,6 +179,7 @@ router.get(
 
 router.get(
   '/:id',
+  documentReadRateLimiter,
   authenticate,
   validate([param('id').isUUID().withMessage('Invalid document ID format')]),
   async (req: Request, res: Response) => {
@@ -166,6 +197,7 @@ router.get(
 
 router.get(
   '/:id/versions',
+  documentReadRateLimiter,
   authenticate,
   validate([param('id').isUUID().withMessage('Invalid document ID format')]),
   async (req: Request, res: Response) => {
@@ -180,6 +212,7 @@ router.get(
 
 router.get(
   '/:id/obligations',
+  documentReadRateLimiter,
   authenticate,
   validate([param('id').isUUID().withMessage('Invalid document ID format')]),
   async (req: Request, res: Response) => {
@@ -199,6 +232,7 @@ router.get(
 
 router.post(
   '/:id/reprocess',
+  reprocessRateLimiter,
   authenticate,
   validate([param('id').isUUID().withMessage('Invalid document ID format')]),
   async (req: Request, res: Response) => {
