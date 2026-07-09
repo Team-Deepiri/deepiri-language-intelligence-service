@@ -106,7 +106,13 @@ interface LimitedText {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return (
+    typeof value === 'object'
+    && value !== null
+    && !Array.isArray(value)
+    && !(value instanceof Map)
+    && !(value instanceof Set)
+  );
 }
 
 function isValidDocumentId(value: unknown): value is string {
@@ -147,6 +153,43 @@ function toJsonValue(value: unknown, seen: WeakSet<object> = new WeakSet<object>
 
   if (value instanceof Date) {
     return value.toISOString();
+  }
+
+  if (value instanceof Map) {
+    if (seen.has(value)) {
+      return undefined;
+    }
+
+    seen.add(value);
+
+    try {
+      const output: JsonObject = {};
+      for (const [key, item] of value.entries()) {
+        const jsonValue = toJsonValue(item, seen);
+        if (jsonValue !== undefined) {
+          output[String(key)] = jsonValue;
+        }
+      }
+      return output;
+    } finally {
+      seen.delete(value);
+    }
+  }
+
+  if (value instanceof Set) {
+    if (seen.has(value)) {
+      return undefined;
+    }
+
+    seen.add(value);
+
+    try {
+      return Array.from(value)
+        .map((item) => toJsonValue(item, seen))
+        .filter((item): item is JsonValue => item !== undefined);
+    } finally {
+      seen.delete(value);
+    }
   }
 
   if (Array.isArray(value)) {

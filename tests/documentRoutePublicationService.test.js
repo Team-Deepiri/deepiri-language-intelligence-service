@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { createHash } = require('node:crypto');
 const test = require('node:test');
 
 const {
@@ -73,6 +74,19 @@ function routeInput(overrides = {}) {
   };
 }
 
+function hashKeyPart(value) {
+  return createHash('sha256').update(String(value).trim()).digest('hex');
+}
+
+function expectedRouteId(documentId, destination, manifestVersion) {
+  return [
+    'document-route',
+    `document:${hashKeyPart(documentId)}`,
+    destination,
+    `manifest:${hashKeyPart(manifestVersion)}`,
+  ].join(':');
+}
+
 test('uses manifest version, not fingerprint, for route idempotency keys', () => {
   const key = buildRoutingIdempotencyKey({
     documentId: 'doc 1',
@@ -81,7 +95,19 @@ test('uses manifest version, not fingerprint, for route idempotency keys', () =>
     fingerprint: 'fingerprint-that-should-not-win',
   });
 
-  assert.equal(key, 'document-route:doc-1:training:manifest:manifest-2');
+  assert.equal(key, expectedRouteId('doc 1', 'training', 'manifest 2'));
+
+  const hyphenatedDocumentKey = buildRoutingIdempotencyKey({
+    documentId: 'doc-1',
+    destination: 'training',
+    manifestVersion: 'manifest 2',
+  });
+
+  assert.notEqual(key, hyphenatedDocumentKey);
+  assert.match(
+    key,
+    /^document-route:document:[a-f0-9]{64}:training:manifest:[a-f0-9]{64}$/
+  );
 });
 
 test('publishes dynamic document vectorize, structured, and training routes', async () => {
@@ -102,7 +128,7 @@ test('publishes dynamic document vectorize, structured, and training routes', as
   assert.equal(vectorizeEvent.payload, undefined);
   assert.equal(vectorizeEvent.data.sourceRoute.streamName, 'document.vectorize');
   assert.equal(vectorizeEvent.data.sourceRoute.schemaVersion, 'document.route.v1');
-  assert.equal(vectorizeEvent.data.routeId, 'document-route:document-1:vectorize:manifest:document:3');
+  assert.equal(vectorizeEvent.data.routeId, expectedRouteId('document-1', 'vectorize', 'document:3'));
   assert.equal(vectorizeEvent.data.documentType, 'policy');
   assert.equal(vectorizeEvent.data.schemaId, 'generic.document');
   assert.equal(vectorizeEvent.data.schemaVersion, '1.0');
@@ -202,8 +228,43 @@ test('uses caller-provided manifestVersion when present', async () => {
   assert.equal(result.manifestVersion, 'schema-run:2026-06-05');
   assert.equal(
     published[0].event.data.routeId,
-    'document-route:document-1:vectorize:manifest:schema-run:2026-06-05'
+    expectedRouteId('document-1', 'vectorize', 'schema-run:2026-06-05')
   );
+});
+
+test('preserves Map and Set values in structured and training route payloads', async () => {
+  const { published, service } = createServiceHarness();
+  const structuredOutput = new Map([
+    ['summary', 'A dynamic extraction from a Map.'],
+    ['entities', new Set(['Deepiri', 'Cyrex'])],
+    ['metrics', new Map([['quality', 0.95]])],
+  ]);
+  structuredOutput.set('self', structuredOutput);
+
+  const result = await service.publishDocumentRoutes(routeInput({ structuredOutput }));
+
+  assert.equal(result.status, 'published');
+
+  const structuredEvent = published.find((item) => item.streamName === 'document.structured');
+  assert.ok(structuredEvent);
+  assert.deepEqual(structuredEvent.event.data.structuredOutput, {
+    summary: 'A dynamic extraction from a Map.',
+    entities: ['Deepiri', 'Cyrex'],
+    metrics: {
+      quality: 0.95,
+    },
+  });
+
+  const trainingEvent = published.find((item) => item.streamName === 'document.training');
+  assert.ok(trainingEvent);
+  const trainingOutput = JSON.parse(trainingEvent.event.data.trainingPayload.output);
+  assert.deepEqual(trainingOutput, {
+    summary: 'A dynamic extraction from a Map.',
+    entities: ['Deepiri', 'Cyrex'],
+    metrics: {
+      quality: 0.95,
+    },
+  });
 });
 
 test('drops circular references from existing document routing metadata', () => {
@@ -219,7 +280,7 @@ test('drops circular references from existing document routing metadata', () => 
       {
         destination: 'vectorize',
         streamName: 'document.vectorize',
-        routeId: 'document-route:document-1:vectorize:manifest:document:3',
+        routeId: expectedRouteId('document-1', 'vectorize', 'document:3'),
       },
     ],
     skipped: [],
