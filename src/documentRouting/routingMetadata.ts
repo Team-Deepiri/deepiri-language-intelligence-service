@@ -16,12 +16,18 @@ function hashKeyPart(value: string | number): string {
 }
 
 export function buildRoutingIdempotencyKey(input: RoutingIdempotencyInput): string {
-  return [
+  const keyParts = [
     'document-route',
     `document:${hashKeyPart(input.documentId)}`,
     encodeKeyPart(input.destination),
     `manifest:${hashKeyPart(input.manifestVersion ?? 'unversioned')}`,
-  ].join(':');
+  ];
+
+  if (input.fingerprint) {
+    keyParts.push(`fingerprint:${hashKeyPart(input.fingerprint)}`);
+  }
+
+  return keyParts.join(':');
 }
 
 export function buildRoutingMetadata(input: {
