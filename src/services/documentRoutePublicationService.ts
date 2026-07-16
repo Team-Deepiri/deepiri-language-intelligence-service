@@ -10,6 +10,7 @@ import type {
   EmbeddedTrainingPayload,
   JsonObject,
   JsonValue,
+  RoutePublicationFailure,
   RouteSkipped,
   RoutingResult,
   StorageReference,
@@ -90,11 +91,12 @@ export interface DocumentRoutePublicationSummary {
 }
 
 export interface DocumentRoutePublicationResult {
-  status: 'published' | 'skipped';
+  status: 'published' | 'partial' | 'failed' | 'skipped';
   documentId: string;
   manifestVersion: string;
   publishedAt: string;
   planned: DocumentRoutePublicationSummary[];
+  failed: RoutePublicationFailure[];
   skipped: RouteSkipped[];
 }
 
@@ -247,6 +249,15 @@ function cleanJsonObject(
 
 function asJsonValue(value: unknown): JsonValue {
   return toJsonValue(value) ?? null;
+}
+
+function normalizeMimeType(value: string | null | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const mediaType = value.split(';', 1)[0].trim().toLowerCase();
+  return /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/.test(mediaType) ? mediaType : undefined;
 }
 
 function normalizeArtifactRequests(value: unknown): ArtifactRequest[] | undefined {
@@ -510,8 +521,12 @@ function normalizeDocumentRouteInput(
 }
 
 function summarizeRoutingResult(result: RoutingResult, publishedAt: string): DocumentRoutePublicationResult {
+  const status = result.planned.length > 0
+    ? (result.failed.length > 0 ? 'partial' : 'published')
+    : (result.failed.length > 0 ? 'failed' : 'skipped');
+
   return {
-    status: result.planned.length > 0 ? 'published' : 'skipped',
+    status,
     documentId: result.documentId,
     manifestVersion: String(result.manifestVersion),
     publishedAt,
@@ -520,6 +535,7 @@ function summarizeRoutingResult(result: RoutingResult, publishedAt: string): Doc
       streamName: route.streamName,
       routeId: route.payload.routeId,
     })),
+    failed: result.failed,
     skipped: result.skipped,
   };
 }
@@ -538,6 +554,7 @@ export function buildDocumentRoutingMetadata(
       manifestVersion: result.manifestVersion,
       publishedAt: result.publishedAt,
       planned: result.planned,
+      failed: result.failed,
       skipped: result.skipped,
     }),
   };
@@ -595,7 +612,9 @@ export class DocumentRoutePublicationService {
         schemaId: normalized.schemaId,
         schemaVersion: normalized.schemaVersion,
         classification: normalized.classification,
-        structuredOutput: asJsonValue(normalized.structuredOutput),
+        structuredOutput: normalized.structuredOutput === undefined
+          ? undefined
+          : asJsonValue(normalized.structuredOutput),
         trainingPayload: buildTrainingPayload({
           instruction: normalized.trainingInstruction,
           rawText,
@@ -619,7 +638,7 @@ export class DocumentRoutePublicationService {
         documentType: normalized.documentType,
         schemaId: normalized.schemaId,
         schemaVersion: normalized.schemaVersion,
-        mimeType: normalized.document.contentType ?? undefined,
+        mimeType: normalizeMimeType(normalized.document.contentType),
         fingerprint: normalized.document.fingerprint ?? undefined,
         storage,
         metadata: cleanJsonObject({
@@ -660,6 +679,7 @@ export class DocumentRoutePublicationService {
       schemaVersion: input.schemaVersion,
       manifestVersion: summary.manifestVersion,
       planned: summary.planned.map((route) => route.streamName),
+      failed: summary.failed,
       skipped: summary.skipped,
     });
 

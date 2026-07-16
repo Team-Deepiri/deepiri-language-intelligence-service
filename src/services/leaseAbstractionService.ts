@@ -2,6 +2,10 @@ import { prisma } from '../db';
 import { cyrexClient } from './cyrexClient';
 import { documentService } from './documentService';
 import { obligationService } from './obligationService';
+import {
+  assertDocumentVersionAccess,
+  type DocumentVersionActor,
+} from './documentVersionAccess';
 import { eventPublisher } from '../streaming/eventPublisher';
 import {
   buildDocumentRoutingFailureMetadata,
@@ -22,6 +26,7 @@ export interface CreateLeaseInput {
   startDate: Date;
   endDate: Date;
   documentUrl: string;
+  contentType?: string;
   userId?: string;
   organizationId?: string;
   tags?: string[];
@@ -44,6 +49,7 @@ export class LeaseAbstractionService {
         startDate: input.startDate,
         endDate: input.endDate,
         documentUrl: input.documentUrl,
+        documentType: input.contentType,
         userId: input.userId,
         organizationId: input.organizationId,
         status: 'PENDING',
@@ -233,44 +239,72 @@ export class LeaseAbstractionService {
         error: errorMessage,
       });
 
-      try {
-        await prisma.lease.update({
-          where: { id: input.lease.id },
-          data: {
-            metadata: buildDocumentRoutingFailureMetadata({
-              existingMetadata: input.lease.metadata,
-              documentId: input.lease.id,
-              manifestVersion,
-              error: errorMessage,
-            }) as Prisma.InputJsonValue,
-          },
-        });
-      } catch (metadataError: any) {
-        logger.warn('Failed to record lease document route failure metadata', {
-          leaseId: input.lease.id,
-          error: metadataError.message,
-        });
-      }
+      await this._persistLeaseRoutingMetadata(
+        input.lease.id,
+        (existingMetadata) => buildDocumentRoutingFailureMetadata({
+          existingMetadata,
+          documentId: input.lease.id,
+          manifestVersion,
+          error: errorMessage,
+        }) as Prisma.InputJsonValue,
+        manifestVersion
+      );
 
       return;
     }
 
-    try {
-      await prisma.lease.update({
-        where: { id: input.lease.id },
-        data: {
-          metadata: buildDocumentRoutingMetadata(
-            input.lease.metadata,
-            routingResult
-          ) as Prisma.InputJsonValue,
-        },
-      });
-    } catch (error: any) {
-      logger.warn('Failed to record lease document route metadata', {
-        leaseId: input.lease.id,
-        manifestVersion,
-        error: error.message,
-      });
+    await this._persistLeaseRoutingMetadata(
+      input.lease.id,
+      (existingMetadata) => buildDocumentRoutingMetadata(
+        existingMetadata,
+        routingResult
+      ) as Prisma.InputJsonValue,
+      manifestVersion
+    );
+  }
+
+  private async _persistLeaseRoutingMetadata(
+    leaseId: string,
+    buildMetadata: (existingMetadata: unknown) => Prisma.InputJsonValue,
+    manifestVersion: string
+  ): Promise<void> {
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        const lease = await prisma.lease.findUnique({
+          where: { id: leaseId },
+          select: { metadata: true },
+        });
+
+        if (!lease) {
+          logger.error('Unable to record lease routing metadata because the lease no longer exists', {
+            leaseId,
+            manifestVersion,
+          });
+          return;
+        }
+
+        await prisma.lease.update({
+          where: { id: leaseId },
+          data: { metadata: buildMetadata(lease.metadata) },
+        });
+        return;
+      } catch (error: any) {
+        if (attempt === 3) {
+          logger.error('Failed to persist lease document routing metadata after retries', {
+            leaseId,
+            manifestVersion,
+            error: error.message,
+          });
+          return;
+        }
+
+        logger.warn('Retrying lease document routing metadata persistence', {
+          leaseId,
+          manifestVersion,
+          attempt,
+          error: error.message,
+        });
+      }
     }
   }
 
@@ -309,10 +343,12 @@ export class LeaseAbstractionService {
   async createLeaseVersion(
     leaseId: string,
     file: Express.Multer.File,
-    versionNumber?: number
+    versionNumber?: number,
+    actor?: DocumentVersionActor
   ): Promise<LeaseVersion> {
     const lease = await prisma.lease.findUnique({ where: { id: leaseId } });
     if (!lease) throw new Error('Lease not found');
+    assertDocumentVersionAccess(actor, lease);
     const startTime = Date.now();
 
     // Get current version number

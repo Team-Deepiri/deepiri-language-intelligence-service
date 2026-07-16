@@ -165,11 +165,19 @@ export interface PlannedDocumentRoute {
   payload: DocumentRoutePayload;
 }
 
+export interface RoutePublicationFailure {
+  destination: DocumentRouteDestination;
+  streamName: DocumentRouteTopic;
+  routeId: string;
+  error: string;
+}
+
 export interface RoutingResult {
   documentId: string;
   manifestVersion: string | number;
   planned: PlannedDocumentRoute[];
   skipped: RouteSkipped[];
+  failed: RoutePublicationFailure[];
 }
 
 export interface RoutingIdempotencyInput {

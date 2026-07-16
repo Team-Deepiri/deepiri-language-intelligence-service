@@ -236,6 +236,7 @@ export function planDocumentRoutePayloads(input: DocumentRoutePlanningInput): Ro
     manifestVersion: manifest.manifestVersion,
     planned,
     skipped: skippedRoutes,
+    failed: [],
   };
 }
 

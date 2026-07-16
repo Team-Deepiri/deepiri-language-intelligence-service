@@ -10,6 +10,10 @@ const {
 const {
   buildRoutingIdempotencyKey,
 } = require('../dist/documentRouting/routingMetadata');
+const {
+  assertDocumentVersionAccess,
+  DocumentVersionAccessError,
+} = require('../dist/services/documentVersionAccess');
 
 function createServiceHarness() {
   const published = [];
@@ -78,16 +82,22 @@ function hashKeyPart(value) {
   return createHash('sha256').update(String(value).trim()).digest('hex');
 }
 
-function expectedRouteId(documentId, destination, manifestVersion) {
-  return [
+function expectedRouteId(documentId, destination, manifestVersion, fingerprint) {
+  const parts = [
     'document-route',
     `document:${hashKeyPart(documentId)}`,
     destination,
     `manifest:${hashKeyPart(manifestVersion)}`,
-  ].join(':');
+  ];
+
+  if (fingerprint) {
+    parts.push(`fingerprint:${hashKeyPart(fingerprint)}`);
+  }
+
+  return parts.join(':');
 }
 
-test('uses manifest version, not fingerprint, for route idempotency keys', () => {
+test('uses manifest version and fingerprint for route idempotency keys', () => {
   const key = buildRoutingIdempotencyKey({
     documentId: 'doc 1',
     destination: 'training',
@@ -95,7 +105,10 @@ test('uses manifest version, not fingerprint, for route idempotency keys', () =>
     fingerprint: 'fingerprint-that-should-not-win',
   });
 
-  assert.equal(key, expectedRouteId('doc 1', 'training', 'manifest 2'));
+  assert.equal(
+    key,
+    expectedRouteId('doc 1', 'training', 'manifest 2', 'fingerprint-that-should-not-win')
+  );
 
   const hyphenatedDocumentKey = buildRoutingIdempotencyKey({
     documentId: 'doc-1',
@@ -106,7 +119,28 @@ test('uses manifest version, not fingerprint, for route idempotency keys', () =>
   assert.notEqual(key, hyphenatedDocumentKey);
   assert.match(
     key,
-    /^document-route:document:[a-f0-9]{64}:training:manifest:[a-f0-9]{64}$/
+    /^document-route:document:[a-f0-9]{64}:training:manifest:[a-f0-9]{64}:fingerprint:[a-f0-9]{64}$/
+  );
+});
+
+test('requires the authenticated tenant to own a document version', () => {
+  const owner = {
+    userId: 'user-1',
+    organizationId: 'org-1',
+  };
+
+  assert.doesNotThrow(() => assertDocumentVersionAccess(owner, owner));
+  assert.throws(
+    () => assertDocumentVersionAccess({ userId: 'user-2', organizationId: 'org-1' }, owner),
+    (error) => error instanceof DocumentVersionAccessError && error.statusCode === 403
+  );
+  assert.throws(
+    () => assertDocumentVersionAccess({ userId: 'user-1', organizationId: 'org-2' }, owner),
+    (error) => error instanceof DocumentVersionAccessError && error.statusCode === 403
+  );
+  assert.throws(
+    () => assertDocumentVersionAccess(undefined, owner),
+    (error) => error instanceof DocumentVersionAccessError && error.statusCode === 401
   );
 });
 
@@ -162,6 +196,16 @@ test('keeps legacy identifiers under metadata instead of the route contract', as
   assert.equal(payload.metadata.legacy.leaseNumber, 'L-100');
 });
 
+test('omits legacy document labels that are not MIME types', async () => {
+  const { published, service } = createServiceHarness();
+
+  await service.publishDocumentRoutes(routeInput({
+    document: documentFixture({ contentType: 'PDF' }),
+  }));
+
+  assert.equal(published[0].event.data.document.mimeType, undefined);
+});
+
 test('rejects document route publication when required dynamic fields are missing', async () => {
   const { published, service } = createServiceHarness();
 
@@ -189,6 +233,61 @@ test('skips document.training when the quality score is below the Helox threshol
   );
   assert.equal(result.skipped[0].destination, 'training');
   assert.equal(result.skipped[0].reason, 'training_quality_below_threshold');
+});
+
+test('skips document.structured when no structured output is available', async () => {
+  const { published, service } = createServiceHarness();
+
+  const result = await service.publishDocumentRoutes(routeInput({
+    destinations: ['structured'],
+    structuredOutput: undefined,
+  }));
+
+  assert.equal(result.status, 'skipped');
+  assert.equal(published.length, 0);
+  assert.deepEqual(result.skipped, [
+    {
+      destination: 'vectorize',
+      reason: 'destination_not_requested',
+    },
+    {
+      destination: 'structured',
+      reason: 'missing_structured_output',
+      message: 'Structured route requires structuredOutput.',
+    },
+    {
+      destination: 'training',
+      reason: 'destination_not_requested',
+    },
+  ]);
+});
+
+test('records a partial result when one requested route cannot be published', async () => {
+  const published = [];
+  const service = new DocumentRoutePublicationService(async (streamName, event) => {
+    if (streamName === 'document.training') {
+      throw new Error('training stream unavailable');
+    }
+
+    published.push({ streamName, event });
+  });
+
+  const result = await service.publishDocumentRoutes(routeInput());
+
+  assert.equal(result.status, 'partial');
+  assert.deepEqual(
+    published.map((item) => item.streamName),
+    ['document.vectorize', 'document.structured']
+  );
+  assert.deepEqual(result.planned.map((route) => route.destination), ['vectorize', 'structured']);
+  assert.deepEqual(result.failed, [
+    {
+      destination: 'training',
+      streamName: 'document.training',
+      routeId: expectedRouteId('document-1', 'training', 'document:3'),
+      error: 'training stream unavailable',
+    },
+  ]);
 });
 
 test('drops circular references while publishing structured and training payloads', async () => {
@@ -283,6 +382,7 @@ test('drops circular references from existing document routing metadata', () => 
         routeId: expectedRouteId('document-1', 'vectorize', 'document:3'),
       },
     ],
+    failed: [],
     skipped: [],
   });
 

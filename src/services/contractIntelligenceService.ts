@@ -3,6 +3,10 @@ import { cyrexClient } from './cyrexClient';
 import { documentService } from './documentService';
 import { obligationService } from './obligationService';
 import { clauseEvolutionService } from './clauseEvolutionService';
+import {
+  assertDocumentVersionAccess,
+  type DocumentVersionActor,
+} from './documentVersionAccess';
 import { eventPublisher } from '../streaming/eventPublisher';
 import {
   buildDocumentRoutingFailureMetadata,
@@ -23,6 +27,7 @@ export interface CreateContractInput {
   effectiveDate: Date;
   expirationDate?: Date;
   documentUrl: string;
+  contentType?: string;
   userId?: string;
   organizationId?: string;
   tags?: string[];
@@ -45,6 +50,7 @@ export class ContractIntelligenceService {
         effectiveDate: input.effectiveDate,
         expirationDate: input.expirationDate,
         documentUrl: input.documentUrl,
+        documentType: input.contentType,
         userId: input.userId,
         organizationId: input.organizationId,
         status: 'PENDING',
@@ -363,44 +369,72 @@ export class ContractIntelligenceService {
         error: errorMessage,
       });
 
-      try {
-        await prisma.contract.update({
-          where: { id: input.contract.id },
-          data: {
-            metadata: buildDocumentRoutingFailureMetadata({
-              existingMetadata: input.contract.metadata,
-              documentId: input.contract.id,
-              manifestVersion,
-              error: errorMessage,
-            }) as Prisma.InputJsonValue,
-          },
-        });
-      } catch (metadataError: any) {
-        logger.warn('Failed to record contract document route failure metadata', {
-          contractId: input.contract.id,
-          error: metadataError.message,
-        });
-      }
+      await this._persistContractRoutingMetadata(
+        input.contract.id,
+        (existingMetadata) => buildDocumentRoutingFailureMetadata({
+          existingMetadata,
+          documentId: input.contract.id,
+          manifestVersion,
+          error: errorMessage,
+        }) as Prisma.InputJsonValue,
+        manifestVersion
+      );
 
       return;
     }
 
-    try {
-      await prisma.contract.update({
-        where: { id: input.contract.id },
-        data: {
-          metadata: buildDocumentRoutingMetadata(
-            input.contract.metadata,
-            routingResult
-          ) as Prisma.InputJsonValue,
-        },
-      });
-    } catch (error: any) {
-      logger.warn('Failed to record contract document route metadata', {
-        contractId: input.contract.id,
-        manifestVersion,
-        error: error.message,
-      });
+    await this._persistContractRoutingMetadata(
+      input.contract.id,
+      (existingMetadata) => buildDocumentRoutingMetadata(
+        existingMetadata,
+        routingResult
+      ) as Prisma.InputJsonValue,
+      manifestVersion
+    );
+  }
+
+  private async _persistContractRoutingMetadata(
+    contractId: string,
+    buildMetadata: (existingMetadata: unknown) => Prisma.InputJsonValue,
+    manifestVersion: string
+  ): Promise<void> {
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        const contract = await prisma.contract.findUnique({
+          where: { id: contractId },
+          select: { metadata: true },
+        });
+
+        if (!contract) {
+          logger.error('Unable to record contract routing metadata because the contract no longer exists', {
+            contractId,
+            manifestVersion,
+          });
+          return;
+        }
+
+        await prisma.contract.update({
+          where: { id: contractId },
+          data: { metadata: buildMetadata(contract.metadata) },
+        });
+        return;
+      } catch (error: any) {
+        if (attempt === 3) {
+          logger.error('Failed to persist contract document routing metadata after retries', {
+            contractId,
+            manifestVersion,
+            error: error.message,
+          });
+          return;
+        }
+
+        logger.warn('Retrying contract document routing metadata persistence', {
+          contractId,
+          manifestVersion,
+          attempt,
+          error: error.message,
+        });
+      }
     }
   }
 
@@ -439,10 +473,12 @@ export class ContractIntelligenceService {
   async createContractVersion(
     contractId: string,
     file: Express.Multer.File,
-    versionNumber?: number
+    versionNumber?: number,
+    actor?: DocumentVersionActor
   ): Promise<ContractVersion> {
     const contract = await prisma.contract.findUnique({ where: { id: contractId } });
     if (!contract) throw new Error('Contract not found');
+    assertDocumentVersionAccess(actor, contract);
     const startTime = Date.now();
 
     // Get current version number
@@ -470,7 +506,7 @@ export class ContractIntelligenceService {
 
     const data = abstractionResult.data || abstractionResult;
     const abstractedTerms = data.abstractedTerms || {};
-    const keyClauses = data.keyClauses || [];
+    const keyClauses = data.keyClauses || abstractedTerms.keyClauses || [];
     const confidence = data.confidence ?? abstractionResult.confidence ?? 0.0;
 
     // Compare with previous version if exists
