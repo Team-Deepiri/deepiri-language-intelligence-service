@@ -9,6 +9,7 @@ import {
   buildDocumentRoutingMetadata,
   buildDocumentRoutingFailureMetadata,
 } from './documentRoutePublicationService';
+import { sanitizeDocumentRoutePayloads } from '../integrations/beddSanitize';
 import { logger } from '@team-deepiri/shared-utils';
 import { resolveAbstractPipeline } from './intelligenceProfileResolver';
 import type { IntelligenceDocument, IntelligenceDocumentVersion, Prisma } from '@prisma/client';
@@ -225,12 +226,24 @@ export class IntelligenceDocumentService {
 
       // Document bus cohesion: publish document.* routes via Sugar Glider (ModelKit topics).
       // Platform lifecycle events above stay on platform-events; this fans out the LIS docs bus.
+      // Optional Bedd skill pass (LIS-only) before publish — never a platform-wide hop.
       const schemaId = `intelligence.${updated.intelligenceProfile || updated.documentKind || 'document'}`;
       const schemaVersion = '1';
       const manifestVersion = documentRoutePublicationService.getDocumentManifestVersion(
         version.versionNumber
       );
       try {
+        const sanitized = await sanitizeDocumentRoutePayloads({
+          rawText: extractedText,
+          structuredOutput: {
+            abstractedTerms: extractedTerms,
+            financialTerms,
+            keyDates,
+            structuredSegments,
+            intelligenceProfile: updated.intelligenceProfile,
+          },
+        });
+
         const routing = await documentRoutePublicationService.publishDocumentRoutes({
           document: {
             id: updated.id,
@@ -247,14 +260,8 @@ export class IntelligenceDocumentService {
           documentType: updated.documentKind || 'document',
           schemaId,
           schemaVersion,
-          rawText: extractedText,
-          structuredOutput: {
-            abstractedTerms: extractedTerms,
-            financialTerms,
-            keyDates,
-            structuredSegments,
-            intelligenceProfile: updated.intelligenceProfile,
-          },
+          rawText: sanitized.rawText,
+          structuredOutput: sanitized.structuredOutput,
           qualityScore: typeof confidence === 'number' ? confidence : Number(confidence) || 0,
           versionNumber: version.versionNumber,
           manifestVersion,
@@ -264,6 +271,7 @@ export class IntelligenceDocumentService {
             intelligenceProfile: updated.intelligenceProfile,
             documentKind: updated.documentKind,
             correlationId,
+            beddApplied: sanitized.beddApplied,
           },
         });
 

@@ -26,6 +26,26 @@ Envelope: `schemaVersion: document.route.v1` via `DocumentProducerRouter`.
 
 `document.*` is the **docs bus** for Cyrex/Helox closed loop — do not mix them.
 
-## Bedd
+## Bedd (LIS-only)
 
-Bedd is **not** required for this cohesion path. Optional Bedd workers on `document.*` belong in a separate integration/perf experiment.
+Bedd is an optional **skill filter** on the LIS document publish path — not a platform data-plane hop and not embedded into Cyrex/Helox/Sugar Glider/other workers.
+
+Before `document.*` routes go out via Sugar Glider, LIS may run:
+
+```text
+bedd eval <skill> '<json>'
+```
+
+Defaults in the LIS image:
+
+| Var | Default |
+|-----|---------|
+| `BEDD_ENABLED` | `true` in Docker; unset locally = auto if binary present |
+| `BEDD_BIN` | `/usr/local/bin/bedd` |
+| `BEDD_SKILL` | `drop_fields` |
+| `BEDD_DROP_FIELDS` | common PII keys (`ssn`, `email`, …) |
+| `BEDD_SKILLS_DIR` | `/opt/bedd/skills` |
+
+Fail-open: if Bedd is missing or errors, routes still publish. Set `BEDD_ENABLED=false` to skip entirely.
+
+Transport remains Sugar Glider / Synapse. Bedd does not replace document routing.
