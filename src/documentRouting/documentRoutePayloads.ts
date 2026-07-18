@@ -1,6 +1,7 @@
 import { DOCUMENT_ROUTE_TOPICS, type DocumentRouteTopic } from './documentRouteTopics';
 import { buildRoutingMetadata, mergeRoutingMetadata } from './routingMetadata';
 import type {
+  ArtifactsRoutePayload,
   DocumentRouteDestination,
   DocumentRoutePlanningInput,
   DocumentRoutePayloadBase,
@@ -31,6 +32,8 @@ function getRouteStreamName(destination: DocumentRouteDestination): DocumentRout
       return DOCUMENT_ROUTE_TOPICS.STRUCTURED;
     case 'training':
       return DOCUMENT_ROUTE_TOPICS.TRAINING;
+    case 'artifacts':
+      return DOCUMENT_ROUTE_TOPICS.ARTIFACTS;
   }
 }
 
@@ -173,6 +176,24 @@ export function buildTrainingRoutePayload(
   };
 }
 
+export function buildArtifactsRoutePayload(
+  input: DocumentRoutePlanningInput
+): ArtifactsRoutePayload | undefined {
+  const requests = input.manifest.artifactRequests;
+  if (!requests || requests.length === 0) {
+    return undefined;
+  }
+
+  return {
+    ...buildBasePayload(input, 'artifacts'),
+    destination: 'artifacts',
+    document: input.document,
+    artifactRequests: requests,
+    storageReferences: input.storageReferences ?? [],
+    classification: input.manifest.classification,
+  };
+}
+
 function skipped(destination: DocumentRouteDestination, reason: RouteSkipped['reason']): RouteSkipped {
   return {
     destination,
@@ -229,6 +250,26 @@ export function planDocumentRoutePayloads(input: DocumentRoutePlanningInput): Ro
     }
   } else {
     skippedRoutes.push(skipped('training', 'destination_not_requested'));
+  }
+
+  if (destinationRequested(manifest, 'artifacts')) {
+    const artifactsPayload = buildArtifactsRoutePayload(input);
+
+    if (artifactsPayload) {
+      planned.push({
+        destination: 'artifacts',
+        streamName: DOCUMENT_ROUTE_TOPICS.ARTIFACTS,
+        payload: artifactsPayload,
+      });
+    } else {
+      skippedRoutes.push({
+        destination: 'artifacts',
+        reason: 'missing_artifact_requests',
+        message: 'Artifacts route requires at least one artifactRequest.',
+      });
+    }
+  } else {
+    skippedRoutes.push(skipped('artifacts', 'destination_not_requested'));
   }
 
   return {

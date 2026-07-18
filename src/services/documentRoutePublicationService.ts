@@ -25,6 +25,7 @@ const DOCUMENT_ROUTE_DESTINATIONS: DocumentRouteDestination[] = [
   'vectorize',
   'structured',
   'training',
+  'artifacts',
 ];
 
 export interface RouteableDocument {

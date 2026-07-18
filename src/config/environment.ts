@@ -16,6 +16,20 @@ export const config = {
     password: process.env.REDIS_PASSWORD || '',
   },
 
+  /** Sugar Glider / Synapse bus — prefer sidecar for document.* publishes. */
+  synapse: {
+    transport: (process.env.SYNAPSE_TRANSPORT || 'sidecar').trim().toLowerCase(),
+    sugarGliderUrl: (
+      process.env.SYNAPSE_SUGAR_GLIDER_URL ||
+      process.env.SYNAPSE_SIDECAR_URL ||
+      'http://synapse-sidecar:8081'
+    ).replace(/\/$/, ''),
+    timeoutMs: parseInt(process.env.SYNAPSE_TIMEOUT_MS || '5000', 10),
+    get useSidecar(): boolean {
+      return this.transport === 'sidecar';
+    },
+  },
+
   storage: {
     provider: process.env.STORAGE_PROVIDER || 'minio',
     bucket: process.env.STORAGE_BUCKET || 'language-intelligence-documents',
