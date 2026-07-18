@@ -69,6 +69,7 @@ async function publishViaSugarGlider(streamName: string, event: unknown): Promis
     });
 
     if (response.status === 503) {
+      // Sidecar queued to WAL — treat as accepted for routing continuity.
       const body = (await response.json().catch(() => ({}))) as { queued?: boolean };
       if (body.queued) {
         return 'queued';

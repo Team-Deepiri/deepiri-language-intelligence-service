@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { body, param, query } from 'express-validator';
 import multer from 'multer';
 import { contractIntelligenceService } from '../services/contractIntelligenceService';
+import { DocumentVersionAccessError } from '../services/documentVersionAccess';
 import { obligationService } from '../services/obligationService';
 import { documentService } from '../services/documentService';
 import { cyrexClient } from '../services/cyrexClient';
@@ -50,6 +51,7 @@ router.post(
         effectiveDate: new Date(req.body.effectiveDate),
         expirationDate: req.body.expirationDate ? new Date(req.body.expirationDate) : undefined,
         documentUrl: uploadResult.url,
+        contentType: uploadResult.mimeType,
         userId: req.user?.id,
         organizationId: req.user?.organizationId,
         tags: req.body.tags ? JSON.parse(req.body.tags) : [],
@@ -274,7 +276,11 @@ router.post(
       const version = await contractIntelligenceService.createContractVersion(
         req.params.id,
         file,
-        req.body.versionNumber ? parseInt(req.body.versionNumber) : undefined
+        req.body.versionNumber ? parseInt(req.body.versionNumber) : undefined,
+        req.user ? {
+          userId: req.user.id,
+          organizationId: req.user.organizationId,
+        } : undefined
       );
       
       res.status(201).json({
@@ -282,8 +288,12 @@ router.post(
         data: version,
       });
     } catch (error: any) {
+      const statusCode = error instanceof DocumentVersionAccessError ? error.statusCode : 500;
       logger.error('Error uploading contract version', { contractId: req.params.id, error: error.message });
-      res.status(500).json({ error: 'Failed to upload contract version', message: error.message });
+      res.status(statusCode).json({
+        error: statusCode === 500 ? 'Failed to upload contract version' : error.message,
+        message: error.message,
+      });
     }
   }
 );
