@@ -1,6 +1,7 @@
-import { DOCUMENT_ROUTE_TOPICS } from './documentRouteTopics';
+import { DOCUMENT_ROUTE_TOPICS, type DocumentRouteTopic } from './documentRouteTopics';
 import { buildRoutingMetadata, mergeRoutingMetadata } from './routingMetadata';
 import type {
+  ArtifactsRoutePayload,
   DocumentRouteDestination,
   DocumentRoutePlanningInput,
   DocumentRoutePayloadBase,
@@ -23,6 +24,19 @@ function destinationRequested(
   return manifest.destinations.includes(destination);
 }
 
+function getRouteStreamName(destination: DocumentRouteDestination): DocumentRouteTopic {
+  switch (destination) {
+    case 'vectorize':
+      return DOCUMENT_ROUTE_TOPICS.VECTORIZE;
+    case 'structured':
+      return DOCUMENT_ROUTE_TOPICS.STRUCTURED;
+    case 'training':
+      return DOCUMENT_ROUTE_TOPICS.TRAINING;
+    case 'artifacts':
+      return DOCUMENT_ROUTE_TOPICS.ARTIFACTS;
+  }
+}
+
 function buildBasePayload(
   input: DocumentRoutePlanningInput,
   destination: DocumentRouteDestination
@@ -42,7 +56,17 @@ function buildBasePayload(
     manifestVersion: manifest.manifestVersion,
     destination,
     qualityScore: manifest.qualityScore,
+    documentType: manifest.documentType ?? input.document.documentType,
+    schemaId: manifest.schemaId ?? input.document.schemaId,
+    schemaVersion: manifest.schemaVersion ?? input.document.schemaVersion,
     correlationId: manifest.correlationId,
+    artifactRequests: manifest.artifactRequests,
+    sourceRoute: {
+      destination,
+      streamName: getRouteStreamName(destination),
+      schemaVersion: 'document.route.v1',
+    },
+    provenance: manifest.provenance,
     metadata: mergeRoutingMetadata(
       input.metadata,
       routingMetadata
@@ -152,6 +176,24 @@ export function buildTrainingRoutePayload(
   };
 }
 
+export function buildArtifactsRoutePayload(
+  input: DocumentRoutePlanningInput
+): ArtifactsRoutePayload | undefined {
+  const requests = input.manifest.artifactRequests;
+  if (!requests || requests.length === 0) {
+    return undefined;
+  }
+
+  return {
+    ...buildBasePayload(input, 'artifacts'),
+    destination: 'artifacts',
+    document: input.document,
+    artifactRequests: requests,
+    storageReferences: input.storageReferences ?? [],
+    classification: input.manifest.classification,
+  };
+}
+
 function skipped(destination: DocumentRouteDestination, reason: RouteSkipped['reason']): RouteSkipped {
   return {
     destination,
@@ -210,11 +252,32 @@ export function planDocumentRoutePayloads(input: DocumentRoutePlanningInput): Ro
     skippedRoutes.push(skipped('training', 'destination_not_requested'));
   }
 
+  if (destinationRequested(manifest, 'artifacts')) {
+    const artifactsPayload = buildArtifactsRoutePayload(input);
+
+    if (artifactsPayload) {
+      planned.push({
+        destination: 'artifacts',
+        streamName: DOCUMENT_ROUTE_TOPICS.ARTIFACTS,
+        payload: artifactsPayload,
+      });
+    } else {
+      skippedRoutes.push({
+        destination: 'artifacts',
+        reason: 'missing_artifact_requests',
+        message: 'Artifacts route requires at least one artifactRequest.',
+      });
+    }
+  } else {
+    skippedRoutes.push(skipped('artifacts', 'destination_not_requested'));
+  }
+
   return {
     documentId: manifest.documentId,
     manifestVersion: manifest.manifestVersion,
     planned,
     skipped: skippedRoutes,
+    failed: [],
   };
 }
 

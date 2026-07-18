@@ -1,9 +1,25 @@
-import { StreamingClient, StreamTopics, StreamEvent, secureLog } from '@team-deepiri/shared-utils';
+import { StreamingClient, StreamTopics, StreamEvent } from '@team-deepiri/shared-utils';
 import { config } from '../config/environment';
 import { logger } from '../utils/logger';
 import { broadcastEvent } from './socketBroadcaster';
 
 let streamingClient: StreamingClient | null = null;
+const INGESTION_EVENTS_TOPIC = 'ingestion-events';
+
+export interface DocumentIngestionRecordPayload {
+  schemaVersion: number;
+  documentId: string;
+  organizationId?: string | null;
+  documentKind: string;
+  intelligenceProfile: string;
+  processingStatus: string;
+  textFingerprint: string;
+  chunkCount: number;
+  labels?: Record<string, unknown>;
+  artifactsRef?: Record<string, unknown>;
+  correlationId?: string;
+  occurredAt: string;
+}
 
 export async function initializeEventPublisher(): Promise<void> {
   try {
@@ -25,6 +41,105 @@ async function publishEvent(event: StreamEvent): Promise<void> {
 
   await streamingClient!.publish(StreamTopics.PLATFORM_EVENTS, event);
   broadcastEvent(event.event, event);
+}
+
+async function publishIngestionEvent(event: StreamEvent): Promise<void> {
+  if (!streamingClient) await initializeEventPublisher();
+
+  await streamingClient!.publish(INGESTION_EVENTS_TOPIC, event);
+}
+
+export async function publishDocumentCreated(
+  documentId: string,
+  documentKey: string,
+  meta?: { documentKind?: string; intelligenceProfile?: string }
+): Promise<void> {
+  const event: StreamEvent = {
+    event: 'document-created',
+    timestamp: new Date().toISOString(),
+    source: 'language-intelligence-service',
+    service: 'language-intelligence',
+    action: 'document-created',
+    data: { documentId, documentKey, ...meta },
+  };
+
+  await publishEvent(event);
+  logger.info(`[Language Intelligence] Published document-created: ${documentId}`);
+}
+
+export async function publishDocumentProcessed(
+  documentId: string,
+  metadata: {
+    processingTimeMs: number;
+    confidence: number;
+    documentKind?: string;
+    intelligenceProfile?: string;
+  }
+): Promise<void> {
+  const event: StreamEvent = {
+    event: 'document-processed',
+    timestamp: new Date().toISOString(),
+    source: 'language-intelligence-service',
+    service: 'language-intelligence',
+    action: 'document-processed',
+    data: { documentId, ...metadata },
+  };
+
+  await publishEvent(event);
+  logger.info(`[Language Intelligence] Published document-processed: ${documentId}`);
+}
+
+export async function publishDocumentProcessingError(
+  documentId: string,
+  error: string
+): Promise<void> {
+  const event: StreamEvent = {
+    event: 'document-processing-error',
+    timestamp: new Date().toISOString(),
+    source: 'language-intelligence-service',
+    service: 'language-intelligence',
+    action: 'document-processing-error',
+    data: { documentId, error },
+  };
+
+  await publishEvent(event);
+  logger.error(`[Language Intelligence] Published document-processing-error: ${documentId}`);
+}
+
+export async function publishDocumentVersionCreated(
+  documentId: string,
+  versionId: string,
+  versionNumber: number
+): Promise<void> {
+  const event: StreamEvent = {
+    event: 'document-version-created',
+    timestamp: new Date().toISOString(),
+    source: 'language-intelligence-service',
+    service: 'language-intelligence',
+    action: 'document-version-created',
+    data: { documentId, versionId, versionNumber },
+  };
+
+  await publishEvent(event);
+  logger.info(`[Language Intelligence] Published document-version-created: ${versionId}`);
+}
+
+export async function publishDocumentIngestionRecord(
+  payload: DocumentIngestionRecordPayload,
+  correlationId?: string
+): Promise<void> {
+  const event: StreamEvent = {
+    event: 'document-ingestion-record',
+    timestamp: new Date().toISOString(),
+    source: 'language-intelligence-service',
+    service: 'language-intelligence',
+    action: 'document-ingestion-record',
+    correlation_id: correlationId,
+    data: payload,
+  };
+
+  await publishIngestionEvent(event);
+  logger.info(`[Language Intelligence] Published document-ingestion-record: ${payload.documentId}`);
 }
 
 export async function publishLeaseCreated(leaseId: string, leaseNumber: string): Promise<void> {
@@ -296,6 +411,11 @@ export async function publishDependencyDeleted(
 }
 
 export const eventPublisher = {
+  publishDocumentCreated,
+  publishDocumentProcessed,
+  publishDocumentProcessingError,
+  publishDocumentVersionCreated,
+  publishDocumentIngestionRecord,
   publishLeaseCreated,
   publishLeaseProcessed,
   publishLeaseProcessingError,

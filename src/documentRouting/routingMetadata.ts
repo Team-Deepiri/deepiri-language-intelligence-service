@@ -5,21 +5,26 @@ import type {
   RoutingIdempotencyInput,
   RoutingMetadata,
 } from './types';
+import { createHash } from 'node:crypto';
 
 function encodeKeyPart(value: string | number): string {
   return String(value).trim().replace(/\s+/g, '-');
 }
 
+function hashKeyPart(value: string | number): string {
+  return createHash('sha256').update(String(value).trim()).digest('hex');
+}
+
 export function buildRoutingIdempotencyKey(input: RoutingIdempotencyInput): string {
   const keyParts = [
     'document-route',
-    encodeKeyPart(input.documentId),
+    `document:${hashKeyPart(input.documentId)}`,
     encodeKeyPart(input.destination),
-    `manifest:${encodeKeyPart(input.manifestVersion ?? 'unversioned')}`,
+    `manifest:${hashKeyPart(input.manifestVersion ?? 'unversioned')}`,
   ];
 
   if (input.fingerprint) {
-    keyParts.push(`fingerprint:${encodeKeyPart(input.fingerprint)}`);
+    keyParts.push(`fingerprint:${hashKeyPart(input.fingerprint)}`);
   }
 
   return keyParts.join(':');

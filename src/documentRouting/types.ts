@@ -6,7 +6,11 @@ export interface JsonObject {
   [key: string]: unknown;
 }
 
-export type DocumentRouteDestination = 'vectorize' | 'structured' | 'training';
+export type DocumentRouteDestination =
+  | 'vectorize'
+  | 'structured'
+  | 'training'
+  | 'artifacts';
 
 export interface StorageReference {
   provider?: string;
@@ -24,6 +28,9 @@ export interface DocumentReference {
   documentId: string;
   title?: string;
   sourceType?: string;
+  documentType?: string;
+  schemaId?: string;
+  schemaVersion?: string;
   mimeType?: string;
   fingerprint?: string;
   storage?: StorageReference;
@@ -57,17 +64,38 @@ export type TrainingIngestionPayload = EmbeddedTrainingPayload & {
   quality_score: number;
 };
 
+export interface ArtifactRequest {
+  artifactType?: string;
+  capability?: string;
+  schemaId?: string;
+  schemaVersion?: string;
+  templateId?: string;
+  instructions?: string;
+  metadata?: JsonObject;
+}
+
+export interface SourceRouteReference {
+  destination: DocumentRouteDestination;
+  streamName: DocumentRouteTopic;
+  schemaVersion: string;
+}
+
 export interface RoutingManifest {
   documentId: string;
   manifestVersion: string | number;
   destinations: DocumentRouteDestination[];
   qualityScore: number;
+  documentType?: string;
+  schemaId?: string;
+  schemaVersion?: string;
   classification?: JsonValue;
   structuredOutput?: JsonValue;
   trainingPayload?: EmbeddedTrainingPayload;
+  artifactRequests?: ArtifactRequest[];
   embeddingModel?: string;
   correlationId?: string;
   fingerprint?: string;
+  provenance?: JsonObject;
 }
 
 export interface DocumentRoutePlanningInput {
@@ -84,7 +112,13 @@ export interface DocumentRoutePayloadBase {
   manifestVersion: string | number;
   destination: DocumentRouteDestination;
   qualityScore: number;
+  documentType?: string;
+  schemaId?: string;
+  schemaVersion?: string;
   correlationId?: string;
+  artifactRequests?: ArtifactRequest[];
+  sourceRoute?: SourceRouteReference;
+  provenance?: JsonObject;
   metadata?: JsonObject;
 }
 
@@ -111,14 +145,24 @@ export interface TrainingRoutePayload extends DocumentRoutePayloadBase {
   classification?: JsonValue;
 }
 
+export interface ArtifactsRoutePayload extends DocumentRoutePayloadBase {
+  destination: 'artifacts';
+  document: DocumentReference;
+  artifactRequests: ArtifactRequest[];
+  storageReferences: StorageReference[];
+  classification?: JsonValue;
+}
+
 export type DocumentRoutePayload =
   | VectorizeRoutePayload
   | StructuredRoutePayload
-  | TrainingRoutePayload;
+  | TrainingRoutePayload
+  | ArtifactsRoutePayload;
 
 export type RouteSkippedReason =
   | 'destination_not_requested'
   | 'missing_structured_output'
+  | 'missing_artifact_requests'
   | 'training_quality_below_threshold'
   | 'training_payload_missing'
   | 'training_payload_incomplete';
@@ -135,11 +179,19 @@ export interface PlannedDocumentRoute {
   payload: DocumentRoutePayload;
 }
 
+export interface RoutePublicationFailure {
+  destination: DocumentRouteDestination;
+  streamName: DocumentRouteTopic;
+  routeId: string;
+  error: string;
+}
+
 export interface RoutingResult {
   documentId: string;
   manifestVersion: string | number;
   planned: PlannedDocumentRoute[];
   skipped: RouteSkipped[];
+  failed: RoutePublicationFailure[];
 }
 
 export interface RoutingIdempotencyInput {
@@ -167,6 +219,7 @@ export interface DocumentRouteStreamEvent<TPayload extends DocumentRoutePayload 
   event: string;
   timestamp: string;
   source: string;
+  correlation_id?: string;
   service: string;
   action: string;
   data: TPayload;

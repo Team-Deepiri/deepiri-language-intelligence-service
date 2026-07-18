@@ -2,6 +2,8 @@ import axios, { AxiosInstance } from 'axios';
 import { config } from '../config/environment';
 import { secureLog } from '@team-deepiri/shared-utils';
 
+export type AbstractPipelineId = 'A' | 'B';
+
 export interface AbstractLeaseRequest {
   leaseId: string;
   documentText: string;
@@ -53,6 +55,37 @@ export class CyrexClient {
         'x-api-key': config.cyrex.apiKey,
       },
     });
+  }
+
+  /**
+   * Run a generic Cyrex abstraction pipeline.
+   *
+   * Missing pipeline paths are configuration errors. Returning an empty stub
+   * would make LIS mark document ingestion as successful with no real output.
+   */
+  async runAbstractPipeline(
+    pipeline: AbstractPipelineId,
+    body: Record<string, unknown>
+  ): Promise<any> {
+    const pipelinePath =
+      pipeline === 'A' ? config.cyrex.pipelinePathA : config.cyrex.pipelinePathB;
+
+    if (!pipelinePath || pipelinePath.trim() === '') {
+      secureLog('error', 'Cyrex pipeline path not configured', { pipeline });
+      throw new Error(`Cyrex pipeline ${pipeline} path is not configured`);
+    }
+
+    try {
+      secureLog('info', 'Calling Cyrex abstract pipeline', { pipeline });
+      const response = await this.client.post(pipelinePath, body);
+      return response.data;
+    } catch (error: any) {
+      secureLog('error', 'Cyrex abstract pipeline failed', {
+        pipeline,
+        error: error.message,
+      });
+      throw new Error(`Abstract pipeline failed: ${error.message}`);
+    }
   }
 
   /**

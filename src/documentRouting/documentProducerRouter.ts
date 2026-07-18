@@ -3,6 +3,8 @@ import type {
   DocumentRoutePlanningInput,
   DocumentRoutePayload,
   DocumentRouteStreamEvent,
+  PlannedDocumentRoute,
+  RoutePublicationFailure,
   RoutingResult,
 } from './types';
 
@@ -25,20 +27,36 @@ export class DocumentProducerRouter {
   }
 
   async route(input: DocumentRoutePlanningInput): Promise<RoutingResult> {
-    const result = planDocumentRoutePayloads(input);
+    const plannedResult = planDocumentRoutePayloads(input);
+    const published: PlannedDocumentRoute[] = [];
+    const failed: RoutePublicationFailure[] = [];
 
-    for (const route of result.planned) {
-      await this.publish(route.streamName, this.buildEvent(route.payload));
+    for (const route of plannedResult.planned) {
+      try {
+        await this.publish(route.streamName, this.buildEvent(route.payload));
+        published.push(route);
+      } catch (error: any) {
+        failed.push({
+          destination: route.destination,
+          streamName: route.streamName,
+          routeId: route.payload.routeId,
+          error: error?.message || String(error),
+        });
+      }
     }
 
-    return result;
+    return {
+      ...plannedResult,
+      planned: published,
+      failed,
+    };
   }
 
   private buildEvent(payload: DocumentRoutePayload): DocumentRouteStreamEvent {
     const action = `document.${payload.destination}.route`;
 
-    return {
-      schemaVersion: '1.0',
+    const event: DocumentRouteStreamEvent = {
+      schemaVersion: 'document.route.v1',
       event: action,
       timestamp: new Date().toISOString(),
       source: this.source,
@@ -46,5 +64,11 @@ export class DocumentProducerRouter {
       action,
       data: payload,
     };
+
+    if (payload.correlationId) {
+      event.correlation_id = payload.correlationId;
+    }
+
+    return event;
   }
 }
