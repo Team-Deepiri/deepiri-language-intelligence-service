@@ -4,7 +4,7 @@ import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import { intelligenceDocumentService } from '../services/intelligenceDocumentService';
 import { obligationService } from '../services/obligationService';
-import { documentService } from '../services/documentService';
+import { documentService, resolveFileDocumentType } from '../services/documentService';
 import { authenticate } from './middleware/auth';
 import { logger } from '@team-deepiri/shared-utils';
 import { validate } from '../middleware/inputValidation';
@@ -126,11 +126,10 @@ router.post(
         documentUrl: uploadResult.url,
         documentStorageKey: uploadResult.storageKey,
         fileSize: uploadResult.fileSize,
-        documentType: uploadResult.mimeType?.includes('pdf')
-          ? 'PDF'
-          : uploadResult.mimeType?.includes('word')
-            ? 'DOCX'
-            : 'PDF',
+        documentType: resolveFileDocumentType(
+          uploadResult.mimeType,
+          file.originalname || uploadResult.storageKey
+        ),
         userId: req.user?.id,
         organizationId: req.user?.organizationId,
         tags,

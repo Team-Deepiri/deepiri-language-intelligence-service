@@ -16,6 +16,42 @@ export interface UploadResult {
   mimeType: string;
 }
 
+/**
+ * Map MIME type / filename to the file-format labels stored on IntelligenceDocument.documentType.
+ * Distinct from business documentKind (lease, policy, etc.).
+ */
+export function resolveFileDocumentType(
+  mimeType?: string | null,
+  fileNameOrUrl?: string | null
+): string {
+  const mime = (mimeType || '').toLowerCase();
+  const name = (fileNameOrUrl || '').toLowerCase().split('?')[0];
+
+  if (mime.includes('pdf') || name.endsWith('.pdf')) return 'PDF';
+  if (
+    mime.includes('wordprocessingml') ||
+    mime.includes('msword') ||
+    mime.includes('officedocument.word') ||
+    name.endsWith('.docx') ||
+    name.endsWith('.doc')
+  ) {
+    return 'DOCX';
+  }
+  if (mime.startsWith('text/plain') || name.endsWith('.txt')) return 'TXT';
+  if (mime.includes('markdown') || name.endsWith('.md') || name.endsWith('.markdown')) return 'MD';
+  if (mime.includes('csv') || name.endsWith('.csv')) return 'CSV';
+  if (mime.includes('json') || name.endsWith('.json')) return 'JSON';
+  if (
+    mime.startsWith('image/') ||
+    /\.(jpe?g|png|gif|bmp|webp|tiff?)$/.test(name)
+  ) {
+    return 'IMAGE';
+  }
+  if (mime.startsWith('text/')) return 'TXT';
+
+  return 'UNKNOWN';
+}
+
 export class DocumentService {
   private s3Client: S3Client;
   private bucket: string;
@@ -187,12 +223,14 @@ export class DocumentService {
 
     // Cyrex fallback (OCR / complex types)
     try {
-      const urlLower = documentUrl.toLowerCase();
+      const fileFormat = resolveFileDocumentType(undefined, documentUrl);
       const resolvedType =
         documentType ||
-        (urlLower.endsWith('.pdf') ? 'pdf' :
-         urlLower.endsWith('.docx') || urlLower.endsWith('.doc') ? 'docx' :
-         urlLower.match(/\.(jpg|jpeg|png|gif|bmp)$/) ? 'image' : 'pdf');
+        (fileFormat === 'IMAGE'
+          ? 'image'
+          : fileFormat === 'UNKNOWN'
+            ? 'pdf'
+            : fileFormat.toLowerCase());
 
       const response = await axios.post(
         `${config.cyrex.baseUrl}/document-extraction/extract-text`,
