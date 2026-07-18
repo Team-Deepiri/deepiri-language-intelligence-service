@@ -20,6 +20,22 @@ function eventTypeFromPayload(event: unknown): string {
   return 'document.route';
 }
 
+async function probeHealth(path: string): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), config.synapse.timeoutMs);
+  try {
+    const response = await fetch(`${config.synapse.sugarGliderUrl}${path}`, {
+      method: 'GET',
+      signal: controller.signal,
+    });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function sugarGliderReady(): Promise<boolean> {
   if (!config.synapse.useSidecar) {
     return false;
@@ -29,22 +45,9 @@ async function sugarGliderReady(): Promise<boolean> {
     return true;
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.synapse.timeoutMs);
-
-  try {
-    const response = await fetch(`${config.synapse.sugarGliderUrl}/health`, {
-      method: 'GET',
-      signal: controller.signal,
-    });
-    sugarGliderHealthy = response.ok;
-    return sugarGliderHealthy;
-  } catch {
-    sugarGliderHealthy = false;
-    return false;
-  } finally {
-    clearTimeout(timer);
-  }
+  // Prefer /healthz (Sugar Glider); fall back to legacy /health.
+  sugarGliderHealthy = (await probeHealth('/healthz')) || (await probeHealth('/health'));
+  return sugarGliderHealthy;
 }
 
 async function publishViaSugarGlider(streamName: string, event: unknown): Promise<string | null> {
