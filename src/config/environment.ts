@@ -16,6 +16,23 @@ export const config = {
     password: process.env.REDIS_PASSWORD || '',
   },
 
+  /**
+   * Sugar Glider / Synapse bus — LIS owns document.* business routing;
+   * transport prefers sidecar (same path as Cyrex / Helox / ModelKit).
+   */
+  synapse: {
+    transport: (process.env.SYNAPSE_TRANSPORT || 'sidecar').trim().toLowerCase(),
+    sugarGliderUrl: (
+      process.env.SYNAPSE_SUGAR_GLIDER_URL ||
+      process.env.SYNAPSE_SIDECAR_URL ||
+      'http://synapse-sidecar:8081'
+    ).replace(/\/$/, ''),
+    timeoutMs: parseInt(process.env.SYNAPSE_TIMEOUT_MS || '5000', 10),
+    get useSidecar(): boolean {
+      return this.transport === 'sidecar';
+    },
+  },
+
   storage: {
     provider: process.env.STORAGE_PROVIDER || 'minio',
     bucket: process.env.STORAGE_BUCKET || 'language-intelligence-documents',
@@ -33,9 +50,7 @@ export const config = {
   },
 
   // Auth is handled by API Gateway - this service just reads user context from headers
-  // No need for AUTH_SERVICE_URL - gateway validates and passes context
   auth: {
-    // Legacy - kept for backwards compatibility but not used
     authServiceUrl: '',
     enabled: process.env.AUTH_ENABLED === 'true',
     allowGatewayHeaders: process.env.AUTH_ALLOW_GATEWAY_HEADERS !== 'false',
@@ -45,4 +60,3 @@ export const config = {
     jwtAudience: process.env.JWT_AUDIENCE || '',
   },
 };
-
