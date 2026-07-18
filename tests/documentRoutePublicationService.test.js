@@ -144,7 +144,7 @@ test('requires the authenticated tenant to own a document version', () => {
   );
 });
 
-test('publishes dynamic document vectorize, structured, training, and artifacts routes', async () => {
+test('publishes dynamic document vectorize, structured, and training routes', async () => {
   const { published, service } = createServiceHarness();
 
   const result = await service.publishDocumentRoutes(routeInput());
@@ -153,7 +153,7 @@ test('publishes dynamic document vectorize, structured, training, and artifacts 
   assert.equal(result.manifestVersion, 'document:3');
   assert.deepEqual(
     published.map((item) => item.streamName),
-    ['document.vectorize', 'document.structured', 'document.training', 'document.artifacts']
+    ['document.vectorize', 'document.structured', 'document.training']
   );
 
   const vectorizeEvent = published[0].event;

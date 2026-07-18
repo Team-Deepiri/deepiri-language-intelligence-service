@@ -6,11 +6,7 @@ export interface JsonObject {
   [key: string]: unknown;
 }
 
-export type DocumentRouteDestination =
-  | 'vectorize'
-  | 'structured'
-  | 'training'
-  | 'artifacts';
+export type DocumentRouteDestination = 'vectorize' | 'structured' | 'training';
 
 export interface StorageReference {
   provider?: string;
@@ -145,24 +141,14 @@ export interface TrainingRoutePayload extends DocumentRoutePayloadBase {
   classification?: JsonValue;
 }
 
-export interface ArtifactsRoutePayload extends DocumentRoutePayloadBase {
-  destination: 'artifacts';
-  document: DocumentReference;
-  artifactRequests: ArtifactRequest[];
-  storageReferences: StorageReference[];
-  classification?: JsonValue;
-}
-
 export type DocumentRoutePayload =
   | VectorizeRoutePayload
   | StructuredRoutePayload
-  | TrainingRoutePayload
-  | ArtifactsRoutePayload;
+  | TrainingRoutePayload;
 
 export type RouteSkippedReason =
   | 'destination_not_requested'
   | 'missing_structured_output'
-  | 'missing_artifact_requests'
   | 'training_quality_below_threshold'
   | 'training_payload_missing'
   | 'training_payload_incomplete';
