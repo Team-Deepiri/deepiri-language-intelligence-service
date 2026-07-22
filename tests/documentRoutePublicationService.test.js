@@ -229,7 +229,7 @@ test('skips document.training when the quality score is below the Helox threshol
 
   assert.deepEqual(
     published.map((item) => item.streamName),
-    ['document.vectorize', 'document.structured']
+    ['document.vectorize', 'document.structured', 'document.artifacts']
   );
   assert.equal(result.skipped[0].destination, 'training');
   assert.equal(result.skipped[0].reason, 'training_quality_below_threshold');
@@ -259,6 +259,10 @@ test('skips document.structured when no structured output is available', async (
       destination: 'training',
       reason: 'destination_not_requested',
     },
+    {
+      destination: 'artifacts',
+      reason: 'destination_not_requested',
+    },
   ]);
 });
 
@@ -277,9 +281,9 @@ test('records a partial result when one requested route cannot be published', as
   assert.equal(result.status, 'partial');
   assert.deepEqual(
     published.map((item) => item.streamName),
-    ['document.vectorize', 'document.structured']
+    ['document.vectorize', 'document.structured', 'document.artifacts']
   );
-  assert.deepEqual(result.planned.map((route) => route.destination), ['vectorize', 'structured']);
+  assert.deepEqual(result.planned.map((route) => route.destination), ['vectorize', 'structured', 'artifacts']);
   assert.deepEqual(result.failed, [
     {
       destination: 'training',
