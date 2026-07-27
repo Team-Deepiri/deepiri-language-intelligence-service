@@ -3,7 +3,17 @@ import { cyrexClient } from './cyrexClient';
 import { documentService } from './documentService';
 import { obligationService } from './obligationService';
 import { clauseEvolutionService } from './clauseEvolutionService';
+import {
+  assertDocumentVersionAccess,
+  type DocumentVersionActor,
+} from './documentVersionAccess';
 import { eventPublisher } from '../streaming/eventPublisher';
+import {
+  buildDocumentRoutingFailureMetadata,
+  buildDocumentRoutingMetadata,
+  documentRoutePublicationService,
+  type DocumentRoutePublicationResult,
+} from './documentRoutePublicationService';
 import { logger } from '@team-deepiri/shared-utils';
 import type { Contract, Clause, ContractVersion, Prisma } from '@prisma/client';
 
@@ -17,6 +27,7 @@ export interface CreateContractInput {
   effectiveDate: Date;
   expirationDate?: Date;
   documentUrl: string;
+  contentType?: string;
   userId?: string;
   organizationId?: string;
   tags?: string[];
@@ -39,6 +50,7 @@ export class ContractIntelligenceService {
         effectiveDate: input.effectiveDate,
         expirationDate: input.expirationDate,
         documentUrl: input.documentUrl,
+        documentType: input.contentType,
         userId: input.userId,
         organizationId: input.organizationId,
         status: 'PENDING',
@@ -92,7 +104,9 @@ export class ContractIntelligenceService {
       // Extract data from response (handle both wrapped and unwrapped responses)
       const data = abstractionResult.data || abstractionResult;
       const abstractedTerms = data.abstractedTerms || {};
-      
+      const confidence = data.confidence ?? abstractionResult.confidence ?? 0.0;
+      const processingTimeMs = Date.now() - startTime;
+
       // Update contract
       const updatedContract = await prisma.contract.update({
         where: { id: contractId },
@@ -105,9 +119,9 @@ export class ContractIntelligenceService {
           financialTerms: data.financialTerms || abstractedTerms.financialTerms,
           terminationTerms: data.terminationTerms || abstractedTerms.terminationTerms,
           renewalTerms: data.renewalTerms || abstractedTerms.renewalTerms,
-          extractionConfidence: data.confidence || 0.0,
+          extractionConfidence: confidence,
           processedAt: new Date(),
-          processingTimeMs: Date.now() - startTime,
+          processingTimeMs,
         },
       });
       
@@ -120,7 +134,7 @@ export class ContractIntelligenceService {
           rawText: extractedText,
           abstractedTerms,
           processedAt: new Date(),
-          processingTimeMs: Date.now() - startTime,
+          processingTimeMs,
         },
       });
       
@@ -153,10 +167,19 @@ export class ContractIntelligenceService {
       }
       
       await eventPublisher.publishContractProcessed(contractId, {
-        processingTimeMs: Date.now() - startTime,
-        confidence: data.confidence || 0.0,
+        processingTimeMs,
+        confidence,
       });
-      
+
+      await this._publishContractDocumentRoutes({
+        contract: updatedContract,
+        rawText: extractedText,
+        abstractedTerms,
+        qualityScore: confidence,
+        versionNumber,
+        processingTimeMs,
+      });
+
       return updatedContract;
     } catch (error: any) {
       await prisma.contract.update({
@@ -286,7 +309,135 @@ export class ContractIntelligenceService {
       }
     });
   }
-  
+
+  private async _publishContractDocumentRoutes(input: {
+    contract: Contract;
+    rawText: string;
+    abstractedTerms: unknown;
+    qualityScore: number;
+    versionNumber: number;
+    processingTimeMs: number;
+  }): Promise<void> {
+    const manifestVersion = documentRoutePublicationService.getDocumentManifestVersion(
+      input.versionNumber
+    );
+
+    let routingResult: DocumentRoutePublicationResult;
+    try {
+      routingResult = await documentRoutePublicationService.publishDocumentRoutes({
+        document: {
+          id: input.contract.id,
+          title: input.contract.contractName,
+          documentUrl: input.contract.documentUrl,
+          documentStorageKey: input.contract.documentStorageKey,
+          contentType: input.contract.documentType,
+          fileSize: input.contract.fileSize,
+          userId: input.contract.userId,
+          organizationId: input.contract.organizationId,
+        },
+        documentType: 'contract',
+        schemaId: 'legacy.contract',
+        schemaVersion: '1.0',
+        rawText: input.rawText,
+        structuredOutput: input.abstractedTerms,
+        qualityScore: input.qualityScore,
+        versionNumber: input.versionNumber,
+        manifestVersion,
+        processingTimeMs: input.processingTimeMs,
+        classification: {
+          legacySourceModel: 'contract',
+          contractType: input.contract.contractType,
+          jurisdiction: input.contract.jurisdiction,
+        },
+        metadata: {
+          legacy: {
+            sourceModel: 'contract',
+            contractNumber: input.contract.contractNumber,
+            contractName: input.contract.contractName,
+            partyA: input.contract.partyA,
+            partyB: input.contract.partyB,
+            contractType: input.contract.contractType,
+            jurisdiction: input.contract.jurisdiction,
+          },
+        },
+      });
+    } catch (error: any) {
+      const errorMessage = error.message || String(error);
+      logger.warn('Contract document route publication failed', {
+        contractId: input.contract.id,
+        manifestVersion,
+        error: errorMessage,
+      });
+
+      await this._persistContractRoutingMetadata(
+        input.contract.id,
+        (existingMetadata) => buildDocumentRoutingFailureMetadata({
+          existingMetadata,
+          documentId: input.contract.id,
+          manifestVersion,
+          error: errorMessage,
+        }) as Prisma.InputJsonValue,
+        manifestVersion
+      );
+
+      return;
+    }
+
+    await this._persistContractRoutingMetadata(
+      input.contract.id,
+      (existingMetadata) => buildDocumentRoutingMetadata(
+        existingMetadata,
+        routingResult
+      ) as Prisma.InputJsonValue,
+      manifestVersion
+    );
+  }
+
+  private async _persistContractRoutingMetadata(
+    contractId: string,
+    buildMetadata: (existingMetadata: unknown) => Prisma.InputJsonValue,
+    manifestVersion: string
+  ): Promise<void> {
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        const contract = await prisma.contract.findUnique({
+          where: { id: contractId },
+          select: { metadata: true },
+        });
+
+        if (!contract) {
+          logger.error('Unable to record contract routing metadata because the contract no longer exists', {
+            contractId,
+            manifestVersion,
+          });
+          return;
+        }
+
+        await prisma.contract.update({
+          where: { id: contractId },
+          data: { metadata: buildMetadata(contract.metadata) },
+        });
+        return;
+      } catch (error: any) {
+        if (attempt === 3) {
+          logger.error('Failed to persist contract document routing metadata after retries', {
+            contractId,
+            manifestVersion,
+            error: error.message,
+          });
+          return;
+        }
+
+        logger.warn('Retrying contract document routing metadata persistence', {
+          contractId,
+          manifestVersion,
+          attempt,
+          error: error.message,
+        });
+      }
+    }
+  }
+
   /**
    * Get contract by ID
    */
@@ -322,10 +473,13 @@ export class ContractIntelligenceService {
   async createContractVersion(
     contractId: string,
     file: Express.Multer.File,
-    versionNumber?: number
+    versionNumber?: number,
+    actor?: DocumentVersionActor
   ): Promise<ContractVersion> {
     const contract = await prisma.contract.findUnique({ where: { id: contractId } });
     if (!contract) throw new Error('Contract not found');
+    assertDocumentVersionAccess(actor, contract);
+    const startTime = Date.now();
 
     // Get current version number
     const currentVersions = await prisma.contractVersion.findMany({
@@ -350,8 +504,10 @@ export class ContractIntelligenceService {
       versionNumber: nextVersionNumber,
     });
 
-    const abstractedTerms = abstractionResult.data?.abstractedTerms || abstractionResult.abstractedTerms;
-    const keyClauses = abstractionResult.data?.keyClauses || abstractionResult.keyClauses || [];
+    const data = abstractionResult.data || abstractionResult;
+    const abstractedTerms = data.abstractedTerms || {};
+    const keyClauses = data.keyClauses || abstractedTerms.keyClauses || [];
+    const confidence = data.confidence ?? abstractionResult.confidence ?? 0.0;
 
     // Compare with previous version if exists
     let changes = null;
@@ -386,6 +542,7 @@ export class ContractIntelligenceService {
       }
     }
 
+    const processingTimeMs = Date.now() - startTime;
     const version = await prisma.contractVersion.create({
       data: {
         contractId,
@@ -397,6 +554,7 @@ export class ContractIntelligenceService {
         changeSummary,
         significantChanges,
         processedAt: new Date(),
+        processingTimeMs,
       },
     });
 
@@ -423,6 +581,22 @@ export class ContractIntelligenceService {
     }
     
     await eventPublisher.publishContractVersionCreated(contractId, version.id, nextVersionNumber);
+
+    await this._publishContractDocumentRoutes({
+      contract: {
+        ...contract,
+        documentUrl: uploadResult.url,
+        documentStorageKey: uploadResult.storageKey,
+        documentType: uploadResult.mimeType,
+        fileSize: uploadResult.fileSize,
+        extractionConfidence: confidence,
+      },
+      rawText: extractedText,
+      abstractedTerms,
+      qualityScore: confidence,
+      versionNumber: nextVersionNumber,
+      processingTimeMs,
+    });
 
     return version;
   }

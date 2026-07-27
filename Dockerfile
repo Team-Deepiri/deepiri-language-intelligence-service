@@ -1,4 +1,14 @@
+ARG BEDD_IMAGE=ghcr.io/team-deepiri/bedd:0.8
+FROM ${BEDD_IMAGE} AS bedd
 FROM ghcr.io/team-deepiri/deepiri-suite:20-alpine
+# Bedd runtime — LIS-only document.* skill filter (musl for Alpine).
+# Not a Compose sidecar; not embedded into other platform workers.
+COPY --from=bedd /opt/bedd/bedd-musl /usr/local/bin/bedd
+COPY --from=bedd /opt/bedd/skills /opt/bedd/skills
+ENV BEDD_SKILLS_DIR=/opt/bedd/skills
+ENV BEDD_ENABLED=true
+ENV BEDD_SKILL=drop_fields
+ENV BEDD_DROP_FIELDS=ssn,socialSecurityNumber,email,phone,phoneNumber,password,secret,apiKey,creditCard
 
 COPY shared/deepiri-shared-utils/package*.json /shared/deepiri-shared-utils/
 COPY shared/deepiri-shared-utils/tsconfig.json /shared/deepiri-shared-utils/

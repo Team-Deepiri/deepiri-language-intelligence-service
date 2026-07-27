@@ -1,0 +1,226 @@
+import type { DocumentRouteTopic } from './documentRouteTopics';
+
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
+export interface JsonObject {
+  [key: string]: unknown;
+}
+
+export type DocumentRouteDestination =
+  | 'vectorize'
+  | 'structured'
+  | 'training'
+  | 'artifacts';
+
+export interface StorageReference {
+  provider?: string;
+  bucket?: string;
+  key?: string;
+  uri?: string;
+  versionId?: string;
+  contentType?: string;
+  checksum?: string;
+  sizeBytes?: number;
+  metadata?: JsonObject;
+}
+
+export interface DocumentReference {
+  documentId: string;
+  title?: string;
+  sourceType?: string;
+  documentType?: string;
+  schemaId?: string;
+  schemaVersion?: string;
+  mimeType?: string;
+  fingerprint?: string;
+  storage?: StorageReference;
+  metadata?: JsonObject;
+}
+
+export interface ChunkReference {
+  chunkId: string;
+  documentId?: string;
+  index: number;
+  text?: string;
+  tokenCount?: number;
+  storage?: StorageReference;
+  metadata?: JsonObject;
+}
+
+export interface EmbeddedTrainingPayload {
+  instruction?: string;
+  input?: string;
+  output?: string;
+  category?: string;
+  quality_score?: number;
+  [key: string]: JsonValue | undefined;
+}
+
+export type TrainingIngestionPayload = EmbeddedTrainingPayload & {
+  instruction: string;
+  input: string;
+  output: string;
+  category: string;
+  quality_score: number;
+};
+
+export interface ArtifactRequest {
+  artifactType?: string;
+  capability?: string;
+  schemaId?: string;
+  schemaVersion?: string;
+  templateId?: string;
+  instructions?: string;
+  metadata?: JsonObject;
+}
+
+export interface SourceRouteReference {
+  destination: DocumentRouteDestination;
+  streamName: DocumentRouteTopic;
+  schemaVersion: string;
+}
+
+export interface RoutingManifest {
+  documentId: string;
+  manifestVersion: string | number;
+  destinations: DocumentRouteDestination[];
+  qualityScore: number;
+  documentType?: string;
+  schemaId?: string;
+  schemaVersion?: string;
+  classification?: JsonValue;
+  structuredOutput?: JsonValue;
+  trainingPayload?: EmbeddedTrainingPayload;
+  artifactRequests?: ArtifactRequest[];
+  embeddingModel?: string;
+  correlationId?: string;
+  fingerprint?: string;
+  provenance?: JsonObject;
+}
+
+export interface DocumentRoutePlanningInput {
+  manifest: RoutingManifest;
+  document: DocumentReference;
+  chunks?: ChunkReference[];
+  storageReferences?: StorageReference[];
+  metadata?: JsonObject;
+}
+
+export interface DocumentRoutePayloadBase {
+  routeId: string;
+  documentId: string;
+  manifestVersion: string | number;
+  destination: DocumentRouteDestination;
+  qualityScore: number;
+  documentType?: string;
+  schemaId?: string;
+  schemaVersion?: string;
+  correlationId?: string;
+  artifactRequests?: ArtifactRequest[];
+  sourceRoute?: SourceRouteReference;
+  provenance?: JsonObject;
+  metadata?: JsonObject;
+}
+
+export interface VectorizeRoutePayload extends DocumentRoutePayloadBase {
+  destination: 'vectorize';
+  document: DocumentReference;
+  chunks: ChunkReference[];
+  storageReferences: StorageReference[];
+  embeddingModel?: string;
+  classification?: JsonValue;
+}
+
+export interface StructuredRoutePayload extends DocumentRoutePayloadBase {
+  destination: 'structured';
+  document: DocumentReference;
+  structuredOutput: JsonValue;
+  classification?: JsonValue;
+}
+
+export interface TrainingRoutePayload extends DocumentRoutePayloadBase {
+  destination: 'training';
+  document: DocumentReference;
+  trainingPayload: TrainingIngestionPayload;
+  classification?: JsonValue;
+}
+
+export interface ArtifactsRoutePayload extends DocumentRoutePayloadBase {
+  destination: 'artifacts';
+  document: DocumentReference;
+  artifactRequests: ArtifactRequest[];
+  storageReferences: StorageReference[];
+  classification?: JsonValue;
+}
+
+export type DocumentRoutePayload =
+  | VectorizeRoutePayload
+  | StructuredRoutePayload
+  | TrainingRoutePayload
+  | ArtifactsRoutePayload;
+
+export type RouteSkippedReason =
+  | 'destination_not_requested'
+  | 'missing_structured_output'
+  | 'missing_artifact_requests'
+  | 'training_quality_below_threshold'
+  | 'training_payload_missing'
+  | 'training_payload_incomplete';
+
+export interface RouteSkipped {
+  destination: DocumentRouteDestination;
+  reason: RouteSkippedReason;
+  message?: string;
+}
+
+export interface PlannedDocumentRoute {
+  destination: DocumentRouteDestination;
+  streamName: DocumentRouteTopic;
+  payload: DocumentRoutePayload;
+}
+
+export interface RoutePublicationFailure {
+  destination: DocumentRouteDestination;
+  streamName: DocumentRouteTopic;
+  routeId: string;
+  error: string;
+}
+
+export interface RoutingResult {
+  documentId: string;
+  manifestVersion: string | number;
+  planned: PlannedDocumentRoute[];
+  skipped: RouteSkipped[];
+  failed: RoutePublicationFailure[];
+}
+
+export interface RoutingIdempotencyInput {
+  documentId: string;
+  destination: DocumentRouteDestination;
+  manifestVersion?: string | number;
+  fingerprint?: string;
+}
+
+export interface RoutingMetadata {
+  idempotencyKey: string;
+  destination: DocumentRouteDestination;
+  manifestVersion?: string | number;
+  fingerprint?: string;
+  routedAt: string;
+  correlationId?: string;
+}
+
+export type MetadataWithRouting = JsonObject & {
+  routing?: RoutingMetadata;
+};
+
+export interface DocumentRouteStreamEvent<TPayload extends DocumentRoutePayload = DocumentRoutePayload> {
+  schemaVersion: string;
+  event: string;
+  timestamp: string;
+  source: string;
+  correlation_id?: string;
+  service: string;
+  action: string;
+  data: TPayload;
+}
