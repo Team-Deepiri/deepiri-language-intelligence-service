@@ -1,17 +1,4 @@
-# LIS — Alpine/musl. Embed Bedd via multi-stage FROM (required).
-# Default: published GHCR image. Compose passes BEDD_IMAGE (see x-bedd-build-args).
-# Do not retag a local build as ghcr.io/team-deepiri/bedd:* — that shadows pulls.
-ARG BEDD_IMAGE=ghcr.io/team-deepiri/bedd:0.8
-FROM ${BEDD_IMAGE} AS bedd
-
 FROM ghcr.io/team-deepiri/deepiri-suite:20-alpine
-
-# Bedd runtime (Bun-style) — musl binary for Alpine
-COPY --from=bedd /opt/bedd/bedd-musl /usr/local/bin/bedd
-COPY --from=bedd /opt/bedd/skills /opt/bedd/skills
-ENV BEDD_SKILLS_DIR=/opt/bedd/skills
-ENV BEDD_BUS_URL=redis://redis:6379
-ENV BEDD_DLQ_STREAM=bedd.dlq
 
 # Copy package files (@team-deepiri/shared-utils from published git tag in package-lock)
 COPY backend/deepiri-language-intelligence-service/package*.json ./
