@@ -8,14 +8,12 @@ import routes from './routes';
 import { connectDatabase, prisma } from './db';
 import { initializeEventPublisher } from './streaming/eventPublisher';
 import { logger } from '@team-deepiri/shared-utils';
-import { config } from './config/environment';
 import { validateBodyIfPresent } from './middleware/inputValidation';
 import { bodyParserConfig, requestSizeLimiter } from './middleware/requestLimits';
 
 dotenv.config();
 
 const app: Express = express();
-const PORT: number = config.port;
 
 // Middleware
 app.use(helmet({

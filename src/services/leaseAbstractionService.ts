@@ -2,7 +2,17 @@ import { prisma } from '../db';
 import { cyrexClient } from './cyrexClient';
 import { documentService } from './documentService';
 import { obligationService } from './obligationService';
+import {
+  assertDocumentVersionAccess,
+  type DocumentVersionActor,
+} from './documentVersionAccess';
 import { eventPublisher } from '../streaming/eventPublisher';
+import {
+  buildDocumentRoutingFailureMetadata,
+  buildDocumentRoutingMetadata,
+  documentRoutePublicationService,
+  type DocumentRoutePublicationResult,
+} from './documentRoutePublicationService';
 import { logger } from '@team-deepiri/shared-utils';
 import type { Lease, LeaseVersion, Prisma } from '@prisma/client';
 
@@ -16,6 +26,7 @@ export interface CreateLeaseInput {
   startDate: Date;
   endDate: Date;
   documentUrl: string;
+  contentType?: string;
   userId?: string;
   organizationId?: string;
   tags?: string[];
@@ -38,6 +49,7 @@ export class LeaseAbstractionService {
         startDate: input.startDate,
         endDate: input.endDate,
         documentUrl: input.documentUrl,
+        documentType: input.contentType,
         userId: input.userId,
         organizationId: input.organizationId,
         status: 'PENDING',
@@ -82,7 +94,9 @@ export class LeaseAbstractionService {
       // Extract data from response (handle both wrapped and unwrapped responses)
       const data = abstractionResult.data || abstractionResult;
       const abstractedTerms = data.abstractedTerms || {};
-      
+      const confidence = data.confidence ?? abstractionResult.confidence ?? 0.0;
+      const processingTimeMs = Date.now() - startTime;
+
       // Update lease
       const updatedLease = await prisma.lease.update({
         where: { id: leaseId },
@@ -95,9 +109,9 @@ export class LeaseAbstractionService {
           keyDates: data.keyDates || abstractedTerms.keyDates,
           propertyDetails: data.propertyDetails || abstractedTerms.propertyDetails,
           keyClauses: data.keyClauses || abstractedTerms.keyClauses,
-          extractionConfidence: data.confidence || 0.0,
+          extractionConfidence: confidence,
           processedAt: new Date(),
-          processingTimeMs: Date.now() - startTime,
+          processingTimeMs,
         },
       });
 
@@ -110,7 +124,7 @@ export class LeaseAbstractionService {
           rawText: extractedText,
           abstractedTerms,
           processedAt: new Date(),
-          processingTimeMs: Date.now() - startTime,
+          processingTimeMs,
         },
       });
 
@@ -126,8 +140,17 @@ export class LeaseAbstractionService {
       }
 
       await eventPublisher.publishLeaseProcessed(leaseId, {
-        processingTimeMs: Date.now() - startTime,
-        confidence: abstractionResult.data?.confidence || abstractionResult.confidence || 0.0,
+        processingTimeMs,
+        confidence,
+      });
+
+      await this._publishLeaseDocumentRoutes({
+        lease: updatedLease,
+        rawText: extractedText,
+        abstractedTerms,
+        qualityScore: confidence,
+        versionNumber: 1,
+        processingTimeMs,
       });
 
       return updatedLease;
@@ -157,6 +180,132 @@ export class LeaseAbstractionService {
         logger.error('Error in async lease processing', { leaseId, error: error.message });
       }
     });
+  }
+
+  private async _publishLeaseDocumentRoutes(input: {
+    lease: Lease;
+    rawText: string;
+    abstractedTerms: unknown;
+    qualityScore: number;
+    versionNumber: number;
+    processingTimeMs: number;
+  }): Promise<void> {
+    const manifestVersion = documentRoutePublicationService.getDocumentManifestVersion(
+      input.versionNumber
+    );
+
+    let routingResult: DocumentRoutePublicationResult;
+    try {
+      routingResult = await documentRoutePublicationService.publishDocumentRoutes({
+        document: {
+          id: input.lease.id,
+          title: `Lease ${input.lease.leaseNumber}`,
+          documentUrl: input.lease.documentUrl,
+          documentStorageKey: input.lease.documentStorageKey,
+          contentType: input.lease.documentType,
+          fileSize: input.lease.fileSize,
+          userId: input.lease.userId,
+          organizationId: input.lease.organizationId,
+        },
+        documentType: 'lease',
+        schemaId: 'legacy.lease',
+        schemaVersion: '1.0',
+        rawText: input.rawText,
+        structuredOutput: input.abstractedTerms,
+        qualityScore: input.qualityScore,
+        versionNumber: input.versionNumber,
+        manifestVersion,
+        processingTimeMs: input.processingTimeMs,
+        classification: {
+          legacySourceModel: 'lease',
+          propertyType: input.lease.propertyType,
+        },
+        metadata: {
+          legacy: {
+            sourceModel: 'lease',
+            leaseNumber: input.lease.leaseNumber,
+            tenantName: input.lease.tenantName,
+            landlordName: input.lease.landlordName,
+            propertyAddress: input.lease.propertyAddress,
+            propertyType: input.lease.propertyType,
+          },
+        },
+      });
+    } catch (error: any) {
+      const errorMessage = error.message || String(error);
+      logger.warn('Lease document route publication failed', {
+        leaseId: input.lease.id,
+        manifestVersion,
+        error: errorMessage,
+      });
+
+      await this._persistLeaseRoutingMetadata(
+        input.lease.id,
+        (existingMetadata) => buildDocumentRoutingFailureMetadata({
+          existingMetadata,
+          documentId: input.lease.id,
+          manifestVersion,
+          error: errorMessage,
+        }) as Prisma.InputJsonValue,
+        manifestVersion
+      );
+
+      return;
+    }
+
+    await this._persistLeaseRoutingMetadata(
+      input.lease.id,
+      (existingMetadata) => buildDocumentRoutingMetadata(
+        existingMetadata,
+        routingResult
+      ) as Prisma.InputJsonValue,
+      manifestVersion
+    );
+  }
+
+  private async _persistLeaseRoutingMetadata(
+    leaseId: string,
+    buildMetadata: (existingMetadata: unknown) => Prisma.InputJsonValue,
+    manifestVersion: string
+  ): Promise<void> {
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        const lease = await prisma.lease.findUnique({
+          where: { id: leaseId },
+          select: { metadata: true },
+        });
+
+        if (!lease) {
+          logger.error('Unable to record lease routing metadata because the lease no longer exists', {
+            leaseId,
+            manifestVersion,
+          });
+          return;
+        }
+
+        await prisma.lease.update({
+          where: { id: leaseId },
+          data: { metadata: buildMetadata(lease.metadata) },
+        });
+        return;
+      } catch (error: any) {
+        if (attempt === 3) {
+          logger.error('Failed to persist lease document routing metadata after retries', {
+            leaseId,
+            manifestVersion,
+            error: error.message,
+          });
+          return;
+        }
+
+        logger.warn('Retrying lease document routing metadata persistence', {
+          leaseId,
+          manifestVersion,
+          attempt,
+          error: error.message,
+        });
+      }
+    }
   }
 
   /**
@@ -194,10 +343,13 @@ export class LeaseAbstractionService {
   async createLeaseVersion(
     leaseId: string,
     file: Express.Multer.File,
-    versionNumber?: number
+    versionNumber?: number,
+    actor?: DocumentVersionActor
   ): Promise<LeaseVersion> {
     const lease = await prisma.lease.findUnique({ where: { id: leaseId } });
     if (!lease) throw new Error('Lease not found');
+    assertDocumentVersionAccess(actor, lease);
+    const startTime = Date.now();
 
     // Get current version number
     const currentVersions = await prisma.leaseVersion.findMany({
@@ -223,7 +375,9 @@ export class LeaseAbstractionService {
       propertyAddress: lease.propertyAddress,
     });
 
-    const abstractedTerms = abstractionResult.data?.abstractedTerms || abstractionResult.abstractedTerms;
+    const data = abstractionResult.data || abstractionResult;
+    const abstractedTerms = data.abstractedTerms || {};
+    const confidence = data.confidence ?? abstractionResult.confidence ?? 0.0;
 
     // Compare with previous version if exists
     let changes = null;
@@ -241,6 +395,7 @@ export class LeaseAbstractionService {
       significantChanges = comparison.data?.significant || false;
     }
 
+    const processingTimeMs = Date.now() - startTime;
     const version = await prisma.leaseVersion.create({
       data: {
         leaseId,
@@ -252,7 +407,24 @@ export class LeaseAbstractionService {
         changeSummary,
         significantChanges,
         processedAt: new Date(),
+        processingTimeMs,
       },
+    });
+
+    await this._publishLeaseDocumentRoutes({
+      lease: {
+        ...lease,
+        documentUrl: uploadResult.url,
+        documentStorageKey: uploadResult.storageKey,
+        documentType: uploadResult.mimeType,
+        fileSize: uploadResult.fileSize,
+        extractionConfidence: confidence,
+      },
+      rawText: extractedText,
+      abstractedTerms,
+      qualityScore: confidence,
+      versionNumber: nextVersionNumber,
+      processingTimeMs,
     });
 
     return version;

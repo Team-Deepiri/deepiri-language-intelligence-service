@@ -189,6 +189,7 @@ model Obligation {
   id                 String                 @id @default(uuid()) @db.Uuid
   leaseId            String?                @map("lease_id") @db.Uuid
   contractId         String?                @map("contract_id") @db.Uuid
+  intelligenceDocumentId String?            @map("intelligence_document_id") @db.Uuid
   description        String
   obligationType     ObligationType         @map("obligation_type")
   party              String                 @db.VarChar(50)
@@ -212,10 +213,12 @@ model Obligation {
   sourceDependencies ObligationDependency[] @relation("SourceObligations")
   targetDependencies ObligationDependency[] @relation("TargetObligations")
   contract           Contract?              @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  intelligenceDocument IntelligenceDocument? @relation(fields: [intelligenceDocumentId], references: [id], onDelete: Cascade)
   lease              Lease?                 @relation(fields: [leaseId], references: [id], onDelete: Cascade)
 
   @@index([leaseId])
   @@index([contractId])
+  @@index([intelligenceDocumentId])
   @@index([status])
   @@index([deadline])
   @@index([obligationType])
@@ -256,6 +259,77 @@ model ObligationDependency {
   @@index([dependencyType])
   @@index([verified])
   @@map("obligation_dependencies")
+}
+
+/// Processed uploads: open-vocabulary `documentKind` and `intelligenceProfile`.
+model IntelligenceDocument {
+  id                   String                    @id @default(uuid()) @db.Uuid
+  documentKey          String                    @unique @map("document_key") @db.VarChar(200)
+  documentKind         String                    @map("document_kind") @db.VarChar(120)
+  intelligenceProfile  String                    @map("intelligence_profile") @db.VarChar(120)
+  profileHints         Json?                     @map("profile_hints")
+  documentUrl          String                    @map("document_url")
+  documentStorageKey   String?                   @map("document_storage_key") @db.VarChar(255)
+  rawText              String?                   @map("raw_text")
+  documentType         String                    @default("PDF") @map("document_type") @db.VarChar(50)
+  fileSize             Int?                      @map("file_size")
+  status               IntelligenceDocumentStatus @default(PENDING)
+  processingStatus     String?                   @map("processing_status") @db.VarChar(50)
+  processingError      String?                   @map("processing_error")
+  processedAt          DateTime?                 @map("processed_at") @db.Timestamp(6)
+  processingTimeMs     Int?                      @map("processing_time_ms")
+  abstractedTerms      Json?                     @map("abstracted_terms")
+  financialTerms       Json?                     @map("financial_terms")
+  keyDates             Json?                     @map("key_dates")
+  extractedSupplement  Json?                     @map("extracted_supplement")
+  structuredSegments   Json?                     @map("structured_segments")
+  terminationDetails   Json?                     @map("termination_details")
+  renewalDetails       Json?                     @map("renewal_details")
+  extractionConfidence Float?                    @map("extraction_confidence")
+  validationScore      Float?                    @map("validation_score")
+  userId               String?                   @map("user_id") @db.Uuid
+  organizationId       String?                   @map("organization_id") @db.Uuid
+  tags                 String[]                  @default([])
+  notes                String?
+  metadata             Json?                     @default("{}")
+  createdAt            DateTime                  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt            DateTime                  @updatedAt @map("updated_at") @db.Timestamp(6)
+  createdBy            String?                   @map("created_by") @db.Uuid
+  updatedBy            String?                   @map("updated_by") @db.Uuid
+  versions             IntelligenceDocumentVersion[]
+  obligations          Obligation[]
+
+  @@index([documentKey])
+  @@index([documentKind])
+  @@index([intelligenceProfile])
+  @@index([status])
+  @@index([userId])
+  @@index([organizationId])
+  @@map("unified_documents")
+}
+
+model IntelligenceDocumentVersion {
+  id                     String               @id @default(uuid()) @db.Uuid
+  intelligenceDocumentId String               @map("intelligence_document_id") @db.Uuid
+  versionNumber          Int                  @map("version_number")
+  documentUrl            String               @map("document_url")
+  rawText                String               @map("raw_text")
+  abstractedTerms        Json                 @map("abstracted_terms")
+  changes                Json?
+  changeSummary          String?              @map("change_summary")
+  changeType             String?              @map("change_type") @db.VarChar(50)
+  significantChanges     Boolean              @default(false) @map("significant_changes")
+  processedAt            DateTime             @default(now()) @map("processed_at") @db.Timestamp(6)
+  processingTimeMs       Int?                 @map("processing_time_ms")
+  metadata               Json?                @default("{}")
+  createdAt              DateTime             @default(now()) @map("created_at") @db.Timestamp(6)
+  createdBy              String?              @map("created_by") @db.Uuid
+  intelligenceDocument   IntelligenceDocument @relation(fields: [intelligenceDocumentId], references: [id], onDelete: Cascade)
+
+  @@unique([intelligenceDocumentId, versionNumber])
+  @@index([intelligenceDocumentId])
+  @@index([versionNumber])
+  @@map("unified_document_versions")
 }
 
 model Document {
@@ -405,6 +479,14 @@ enum LeaseStatus {
 }
 
 enum ContractStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  ERROR
+  ARCHIVED
+}
+
+enum IntelligenceDocumentStatus {
   PENDING
   PROCESSING
   COMPLETED

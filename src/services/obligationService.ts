@@ -5,6 +5,7 @@ import type { Obligation, Prisma } from '@prisma/client';
 export interface CreateObligationInput {
   leaseId?: string;
   contractId?: string;
+  intelligenceDocumentId?: string;
   description: string;
   obligationType: string;
   party?: string;
@@ -23,6 +24,7 @@ export interface CreateObligationInput {
 export interface ObligationFilters {
   leaseId?: string;
   contractId?: string;
+  intelligenceDocumentId?: string;
   status?: string;
   obligationType?: string;
   overdue?: boolean;
@@ -84,6 +86,52 @@ export class ObligationService {
     return createdObligations;
   }
 
+  async createObligationsFromIntelligenceDocument(
+    intelligenceDocumentId: string,
+    obligations: any[]
+  ): Promise<Obligation[]> {
+    const createdObligations: Obligation[] = [];
+
+    for (const obl of obligations) {
+      try {
+        const obligation = await prisma.obligation.create({
+          data: {
+            intelligenceDocumentId,
+            description: obl.description || '',
+            obligationType: this._mapObligationType(obl.obligationType || obl.type) as any,
+            party: this._mapParty(obl.party),
+            deadline: obl.deadline ? new Date(obl.deadline) : null,
+            startDate: obl.startDate ? new Date(obl.startDate) : null,
+            endDate: obl.endDate ? new Date(obl.endDate) : null,
+            frequency: obl.frequency || obl.recurrencePattern || null,
+            amount: obl.amount ? parseFloat(obl.amount.toString()) : null,
+            currency: obl.currency || 'USD',
+            sourceClause: obl.sourceSnippet || obl.sourceClause || obl.source || null,
+            confidence: obl.confidence || null,
+            status: 'PENDING',
+            tags: obl.tags || [],
+            notes: obl.notes || null,
+          },
+        });
+
+        createdObligations.push(obligation);
+      } catch (error: any) {
+        logger.error('Failed to create document obligation', {
+          intelligenceDocumentId,
+          error: error.message,
+          obligation: obl,
+        });
+      }
+    }
+
+    logger.info('Document obligations created', {
+      intelligenceDocumentId,
+      count: createdObligations.length,
+    });
+
+    return createdObligations;
+  }
+
   /**
    * Get obligations by lease ID
    */
@@ -104,6 +152,15 @@ export class ObligationService {
     });
   }
 
+  async getObligationsByIntelligenceDocumentId(
+    intelligenceDocumentId: string
+  ): Promise<Obligation[]> {
+    return prisma.obligation.findMany({
+      where: { intelligenceDocumentId },
+      orderBy: { deadline: 'asc' },
+    });
+  }
+
   /**
    * List obligations with filters
    */
@@ -112,6 +169,9 @@ export class ObligationService {
 
     if (filters.leaseId) where.leaseId = filters.leaseId;
     if (filters.contractId) where.contractId = filters.contractId;
+    if (filters.intelligenceDocumentId) {
+      where.intelligenceDocumentId = filters.intelligenceDocumentId;
+    }
     if (filters.status) where.status = filters.status as any;
     if (filters.obligationType) where.obligationType = filters.obligationType as any;
     if (filters.owner) where.owner = { contains: filters.owner, mode: 'insensitive' };
@@ -167,6 +227,7 @@ export class ObligationService {
       data: {
         leaseId: input.leaseId ?? null,
         contractId: input.contractId ?? null,
+        intelligenceDocumentId: input.intelligenceDocumentId ?? null,
         description: input.description,
         obligationType: this._mapObligationType(input.obligationType) as any,
         party: this._mapParty(input.party ?? ''),
@@ -201,6 +262,9 @@ export class ObligationService {
       data: {
         ...(data.leaseId !== undefined && { leaseId: data.leaseId }),
         ...(data.contractId !== undefined && { contractId: data.contractId }),
+        ...(data.intelligenceDocumentId !== undefined && {
+          intelligenceDocumentId: data.intelligenceDocumentId,
+        }),
         ...(data.description !== undefined && { description: data.description }),
         ...(data.obligationType !== undefined && { obligationType: this._mapObligationType(data.obligationType) as any }),
         ...(data.party !== undefined && { party: this._mapParty(data.party) }),
