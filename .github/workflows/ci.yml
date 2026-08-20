@@ -45,7 +45,6 @@ jobs:
         working-directory: platform-services/backend/deepiri-language-intelligence-service
         run: |
           echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" > ~/.npmrc
-          npm install --legacy-peer-deps file:../../shared/deepiri-shared-utils
           npm ci --legacy-peer-deps
 
       - name: Type check
