@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { body, param, query } from 'express-validator';
 import multer from 'multer';
+import rateLimit from 'express-rate-limit';
 import { contractIntelligenceService } from '../services/contractIntelligenceService';
 import { DocumentVersionAccessError } from '../services/documentVersionAccess';
 import { obligationService } from '../services/obligationService';
@@ -13,6 +14,14 @@ import { validate, commonValidations } from '../middleware/inputValidation';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+// Same shape as documentRoutes.ts's documentReadRateLimiter.
+const downloadUrlRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many download URL requests, please try again later.' },
+});
 
 /**
  * POST /api/v1/contracts/upload
@@ -105,6 +114,7 @@ router.get(
  */
 router.get(
   '/:id/download-url',
+  downloadUrlRateLimiter,
   authenticate,
   validate([
     param('id').isUUID().withMessage('Invalid contract ID format')
