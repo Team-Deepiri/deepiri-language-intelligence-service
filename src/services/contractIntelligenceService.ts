@@ -27,6 +27,7 @@ export interface CreateContractInput {
   effectiveDate: Date;
   expirationDate?: Date;
   documentUrl: string;
+  documentStorageKey?: string;
   contentType?: string;
   userId?: string;
   organizationId?: string;
@@ -50,6 +51,7 @@ export class ContractIntelligenceService {
         effectiveDate: input.effectiveDate,
         expirationDate: input.expirationDate,
         documentUrl: input.documentUrl,
+        documentStorageKey: input.documentStorageKey,
         documentType: input.contentType,
         userId: input.userId,
         organizationId: input.organizationId,
@@ -80,23 +82,23 @@ export class ContractIntelligenceService {
     });
     
     try {
-      const extractedText = await documentService.extractText(contract.documentUrl);
-      
+      const extractedText = await documentService.extractText(contract.documentStorageKey ?? contract.documentUrl);
+
       // Get current version number
       const currentVersions = await prisma.contractVersion.findMany({
         where: { contractId },
         orderBy: { versionNumber: 'desc' },
         take: 1,
       });
-      const versionNumber = currentVersions.length > 0 
-        ? currentVersions[0].versionNumber + 1 
+      const versionNumber = currentVersions.length > 0
+        ? currentVersions[0].versionNumber + 1
         : 1;
-      
+
       // Call Cyrex API
       const abstractionResult = await cyrexClient.abstractContract({
         contractId,
         documentText: extractedText,
-        documentUrl: contract.documentUrl,
+        documentUrl: contract.documentStorageKey ?? contract.documentUrl,
         contractNumber: contract.contractNumber,
         versionNumber,
       });
@@ -493,13 +495,13 @@ export class ContractIntelligenceService {
 
     // Upload document
     const uploadResult = await documentService.uploadDocument(file, 'contract-versions');
-    const extractedText = await documentService.extractText(uploadResult.url);
+    const extractedText = await documentService.extractText(uploadResult.storageKey);
 
     // Abstract new version
     const abstractionResult = await cyrexClient.abstractContract({
       contractId,
       documentText: extractedText,
-      documentUrl: uploadResult.url,
+      documentUrl: uploadResult.storageKey,
       contractNumber: contract.contractNumber,
       versionNumber: nextVersionNumber,
     });
@@ -547,7 +549,7 @@ export class ContractIntelligenceService {
       data: {
         contractId,
         versionNumber: nextVersionNumber,
-        documentUrl: uploadResult.url,
+        documentUrl: uploadResult.storageKey,
         rawText: extractedText,
         abstractedTerms,
         changes,
@@ -585,7 +587,7 @@ export class ContractIntelligenceService {
     await this._publishContractDocumentRoutes({
       contract: {
         ...contract,
-        documentUrl: uploadResult.url,
+        documentUrl: uploadResult.storageKey,
         documentStorageKey: uploadResult.storageKey,
         documentType: uploadResult.mimeType,
         fileSize: uploadResult.fileSize,

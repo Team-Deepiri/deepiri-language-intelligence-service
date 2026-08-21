@@ -26,6 +26,7 @@ export interface CreateLeaseInput {
   startDate: Date;
   endDate: Date;
   documentUrl: string;
+  documentStorageKey?: string;
   contentType?: string;
   userId?: string;
   organizationId?: string;
@@ -49,6 +50,7 @@ export class LeaseAbstractionService {
         startDate: input.startDate,
         endDate: input.endDate,
         documentUrl: input.documentUrl,
+        documentStorageKey: input.documentStorageKey,
         documentType: input.contentType,
         userId: input.userId,
         organizationId: input.organizationId,
@@ -79,13 +81,13 @@ export class LeaseAbstractionService {
     });
 
     try {
-      const extractedText = await documentService.extractText(lease.documentUrl);
+      const extractedText = await documentService.extractText(lease.documentStorageKey ?? lease.documentUrl);
 
       // Call Cyrex for abstraction
       const abstractionResult = await cyrexClient.abstractLease({
         leaseId,
         documentText: extractedText,
-        documentUrl: lease.documentUrl,
+        documentUrl: lease.documentStorageKey ?? lease.documentUrl,
         leaseNumber: lease.leaseNumber,
         tenantName: lease.tenantName,
         propertyAddress: lease.propertyAddress,
@@ -363,13 +365,13 @@ export class LeaseAbstractionService {
 
     // Upload document
     const uploadResult = await documentService.uploadDocument(file, 'lease-versions');
-    const extractedText = await documentService.extractText(uploadResult.url);
+    const extractedText = await documentService.extractText(uploadResult.storageKey);
 
     // Abstract new version
     const abstractionResult = await cyrexClient.abstractLease({
       leaseId,
       documentText: extractedText,
-      documentUrl: uploadResult.url,
+      documentUrl: uploadResult.storageKey,
       leaseNumber: lease.leaseNumber,
       tenantName: lease.tenantName,
       propertyAddress: lease.propertyAddress,
@@ -400,7 +402,7 @@ export class LeaseAbstractionService {
       data: {
         leaseId,
         versionNumber: nextVersionNumber,
-        documentUrl: uploadResult.url,
+        documentUrl: uploadResult.storageKey,
         rawText: extractedText,
         abstractedTerms,
         changes,
@@ -414,7 +416,7 @@ export class LeaseAbstractionService {
     await this._publishLeaseDocumentRoutes({
       lease: {
         ...lease,
-        documentUrl: uploadResult.url,
+        documentUrl: uploadResult.storageKey,
         documentStorageKey: uploadResult.storageKey,
         documentType: uploadResult.mimeType,
         fileSize: uploadResult.fileSize,

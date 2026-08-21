@@ -123,7 +123,7 @@ router.post(
         documentKind: req.body.documentKind,
         intelligenceProfile: req.body.intelligenceProfile,
         profileHints,
-        documentUrl: uploadResult.url,
+        documentUrl: uploadResult.storageKey,
         documentStorageKey: uploadResult.storageKey,
         fileSize: uploadResult.fileSize,
         documentType: resolveFileDocumentType(
@@ -190,6 +190,33 @@ router.get(
       res.json({ success: true, data: row });
     } catch (error: any) {
       res.status(500).json({ error: 'Failed to fetch document', message: error.message });
+    }
+  }
+);
+
+/**
+ * GET /api/v1/documents/:id/download-url
+ * Documents are private in storage — this hands back a fresh, short-lived
+ * presigned link rather than a URL that could be persisted/reused forever.
+ */
+router.get(
+  '/:id/download-url',
+  documentReadRateLimiter,
+  authenticate,
+  validate([param('id').isUUID().withMessage('Invalid document ID format')]),
+  async (req: Request, res: Response) => {
+    try {
+      const row = await intelligenceDocumentService.getById(req.params.id, requestScope(req));
+      if (!row) {
+        return res.status(404).json({ error: 'Document not found' });
+      }
+
+      const expiresIn = 900; // 15 minutes
+      const url = await documentService.getPresignedDownloadUrl(row.documentStorageKey ?? row.documentUrl, expiresIn);
+      res.json({ success: true, data: { url, expiresIn } });
+    } catch (error: any) {
+      logger.error('Error generating document download URL', { documentId: req.params.id, error: error.message });
+      res.status(500).json({ error: 'Failed to generate download URL', message: error.message });
     }
   }
 );

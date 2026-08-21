@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { body, param, query } from 'express-validator';
 import multer from 'multer';
+import rateLimit from 'express-rate-limit';
 import { leaseAbstractionService } from '../services/leaseAbstractionService';
 import { DocumentVersionAccessError } from '../services/documentVersionAccess';
 import { obligationService } from '../services/obligationService';
@@ -12,6 +13,14 @@ import { validate, commonValidations } from '../middleware/inputValidation';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+// Same shape as documentRoutes.ts's documentReadRateLimiter.
+const downloadUrlRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many download URL requests, please try again later.' },
+});
 
 /**
  * POST /api/v1/leases/upload
@@ -50,7 +59,8 @@ router.post(
         squareFootage: req.body.squareFootage ? parseInt(req.body.squareFootage) : undefined,
         startDate: new Date(req.body.startDate),
         endDate: new Date(req.body.endDate),
-        documentUrl: uploadResult.url,
+        documentUrl: uploadResult.storageKey,
+        documentStorageKey: uploadResult.storageKey,
         contentType: uploadResult.mimeType,
         userId: req.user?.id,
         organizationId: req.user?.organizationId,
@@ -89,10 +99,39 @@ router.get(
       if (!lease) {
         return res.status(404).json({ error: 'Lease not found' });
       }
-      
+
       res.json({ success: true, data: lease });
     } catch (error: any) {
       res.status(500).json({ error: 'Failed to fetch lease', message: error.message });
+    }
+  }
+);
+
+/**
+ * GET /api/v1/leases/:id/download-url
+ * Documents are private in storage — this hands back a fresh, short-lived
+ * presigned link rather than a URL that could be persisted/reused forever.
+ */
+router.get(
+  '/:id/download-url',
+  downloadUrlRateLimiter,
+  authenticate,
+  validate([
+    param('id').isUUID().withMessage('Invalid lease ID format')
+  ]),
+  async (req: Request, res: Response) => {
+    try {
+      const lease = await leaseAbstractionService.getLeaseById(req.params.id);
+      if (!lease) {
+        return res.status(404).json({ error: 'Lease not found' });
+      }
+
+      const expiresIn = 900; // 15 minutes
+      const url = await documentService.getPresignedDownloadUrl(lease.documentStorageKey ?? lease.documentUrl, expiresIn);
+      res.json({ success: true, data: { url, expiresIn } });
+    } catch (error: any) {
+      logger.error('Error generating lease download URL', { leaseId: req.params.id, error: error.message });
+      res.status(500).json({ error: 'Failed to generate download URL', message: error.message });
     }
   }
 );
