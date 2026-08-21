@@ -49,7 +49,7 @@ router.post(
         squareFootage: req.body.squareFootage ? parseInt(req.body.squareFootage) : undefined,
         startDate: new Date(req.body.startDate),
         endDate: new Date(req.body.endDate),
-        documentUrl: uploadResult.url,
+        documentUrl: uploadResult.storageKey,
         userId: req.user?.id,
         organizationId: req.user?.organizationId,
         tags: req.body.tags ? JSON.parse(req.body.tags) : [],
@@ -87,10 +87,38 @@ router.get(
       if (!lease) {
         return res.status(404).json({ error: 'Lease not found' });
       }
-      
+
       res.json({ success: true, data: lease });
     } catch (error: any) {
       res.status(500).json({ error: 'Failed to fetch lease', message: error.message });
+    }
+  }
+);
+
+/**
+ * GET /api/v1/leases/:id/download-url
+ * Documents are private in storage — this hands back a fresh, short-lived
+ * presigned link rather than a URL that could be persisted/reused forever.
+ */
+router.get(
+  '/:id/download-url',
+  authenticate,
+  validate([
+    param('id').isUUID().withMessage('Invalid lease ID format')
+  ]),
+  async (req: Request, res: Response) => {
+    try {
+      const lease = await leaseAbstractionService.getLeaseById(req.params.id);
+      if (!lease) {
+        return res.status(404).json({ error: 'Lease not found' });
+      }
+
+      const expiresIn = 900; // 15 minutes
+      const url = await documentService.getPresignedDownloadUrl(lease.documentUrl, expiresIn);
+      res.json({ success: true, data: { url, expiresIn } });
+    } catch (error: any) {
+      logger.error('Error generating lease download URL', { leaseId: req.params.id, error: error.message });
+      res.status(500).json({ error: 'Failed to generate download URL', message: error.message });
     }
   }
 );

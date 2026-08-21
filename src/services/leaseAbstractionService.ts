@@ -211,13 +211,13 @@ export class LeaseAbstractionService {
 
     // Upload document
     const uploadResult = await documentService.uploadDocument(file, 'lease-versions');
-    const extractedText = await documentService.extractText(uploadResult.url);
+    const extractedText = await documentService.extractText(uploadResult.storageKey);
 
     // Abstract new version
     const abstractionResult = await cyrexClient.abstractLease({
       leaseId,
       documentText: extractedText,
-      documentUrl: uploadResult.url,
+      documentUrl: uploadResult.storageKey,
       leaseNumber: lease.leaseNumber,
       tenantName: lease.tenantName,
       propertyAddress: lease.propertyAddress,
@@ -245,7 +245,7 @@ export class LeaseAbstractionService {
       data: {
         leaseId,
         versionNumber: nextVersionNumber,
-        documentUrl: uploadResult.url,
+        documentUrl: uploadResult.storageKey,
         rawText: extractedText,
         abstractedTerms,
         changes,

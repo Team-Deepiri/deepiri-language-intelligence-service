@@ -339,13 +339,13 @@ export class ContractIntelligenceService {
 
     // Upload document
     const uploadResult = await documentService.uploadDocument(file, 'contract-versions');
-    const extractedText = await documentService.extractText(uploadResult.url);
+    const extractedText = await documentService.extractText(uploadResult.storageKey);
 
     // Abstract new version
     const abstractionResult = await cyrexClient.abstractContract({
       contractId,
       documentText: extractedText,
-      documentUrl: uploadResult.url,
+      documentUrl: uploadResult.storageKey,
       contractNumber: contract.contractNumber,
       versionNumber: nextVersionNumber,
     });
@@ -390,7 +390,7 @@ export class ContractIntelligenceService {
       data: {
         contractId,
         versionNumber: nextVersionNumber,
-        documentUrl: uploadResult.url,
+        documentUrl: uploadResult.storageKey,
         rawText: extractedText,
         abstractedTerms,
         changes,

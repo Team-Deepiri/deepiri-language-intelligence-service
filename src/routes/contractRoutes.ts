@@ -49,7 +49,7 @@ router.post(
         jurisdiction: req.body.jurisdiction,
         effectiveDate: new Date(req.body.effectiveDate),
         expirationDate: req.body.expirationDate ? new Date(req.body.expirationDate) : undefined,
-        documentUrl: uploadResult.url,
+        documentUrl: uploadResult.storageKey,
         userId: req.user?.id,
         organizationId: req.user?.organizationId,
         tags: req.body.tags ? JSON.parse(req.body.tags) : [],
@@ -91,6 +91,34 @@ router.get(
       res.json({ success: true, data: contract });
     } catch (error: any) {
       res.status(500).json({ error: 'Failed to fetch contract', message: error.message });
+    }
+  }
+);
+
+/**
+ * GET /api/v1/contracts/:id/download-url
+ * Documents are private in storage — this hands back a fresh, short-lived
+ * presigned link rather than a URL that could be persisted/reused forever.
+ */
+router.get(
+  '/:id/download-url',
+  authenticate,
+  validate([
+    param('id').isUUID().withMessage('Invalid contract ID format')
+  ]),
+  async (req: Request, res: Response) => {
+    try {
+      const contract = await contractIntelligenceService.getContractById(req.params.id);
+      if (!contract) {
+        return res.status(404).json({ error: 'Contract not found' });
+      }
+
+      const expiresIn = 900; // 15 minutes
+      const url = await documentService.getPresignedDownloadUrl(contract.documentUrl, expiresIn);
+      res.json({ success: true, data: { url, expiresIn } });
+    } catch (error: any) {
+      logger.error('Error generating contract download URL', { contractId: req.params.id, error: error.message });
+      res.status(500).json({ error: 'Failed to generate download URL', message: error.message });
     }
   }
 );
