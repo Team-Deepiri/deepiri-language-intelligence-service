@@ -113,7 +113,7 @@ export class IntelligenceDocumentService {
     });
 
     try {
-      const extractedText = await documentService.extractText(doc.documentUrl);
+      const extractedText = await documentService.extractText(doc.documentStorageKey ?? doc.documentUrl);
       if (!extractedText.trim()) {
         throw new Error('Text extraction returned empty content');
       }
