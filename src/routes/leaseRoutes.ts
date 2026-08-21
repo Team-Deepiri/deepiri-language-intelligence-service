@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { body, param, query } from 'express-validator';
 import multer from 'multer';
 import { leaseAbstractionService } from '../services/leaseAbstractionService';
+import { DocumentVersionAccessError } from '../services/documentVersionAccess';
 import { obligationService } from '../services/obligationService';
 import { documentService } from '../services/documentService';
 import { authenticate } from './middleware/auth';
@@ -50,6 +51,8 @@ router.post(
         startDate: new Date(req.body.startDate),
         endDate: new Date(req.body.endDate),
         documentUrl: uploadResult.storageKey,
+        documentStorageKey: uploadResult.storageKey,
+        contentType: uploadResult.mimeType,
         userId: req.user?.id,
         organizationId: req.user?.organizationId,
         tags: req.body.tags ? JSON.parse(req.body.tags) : [],
@@ -114,7 +117,7 @@ router.get(
       }
 
       const expiresIn = 900; // 15 minutes
-      const url = await documentService.getPresignedDownloadUrl(lease.documentUrl, expiresIn);
+      const url = await documentService.getPresignedDownloadUrl(lease.documentStorageKey ?? lease.documentUrl, expiresIn);
       res.json({ success: true, data: { url, expiresIn } });
     } catch (error: any) {
       logger.error('Error generating lease download URL', { leaseId: req.params.id, error: error.message });
@@ -163,7 +166,11 @@ router.post(
       const version = await leaseAbstractionService.createLeaseVersion(
         req.params.id,
         file,
-        req.body.versionNumber ? parseInt(req.body.versionNumber) : undefined
+        req.body.versionNumber ? parseInt(req.body.versionNumber) : undefined,
+        req.user ? {
+          userId: req.user.id,
+          organizationId: req.user.organizationId,
+        } : undefined
       );
       
       res.status(201).json({
@@ -171,8 +178,12 @@ router.post(
         data: version,
       });
     } catch (error: any) {
+      const statusCode = error instanceof DocumentVersionAccessError ? error.statusCode : 500;
       logger.error('Error uploading lease version', { leaseId: req.params.id, error: error.message });
-      res.status(500).json({ error: 'Failed to upload lease version', message: error.message });
+      res.status(statusCode).json({
+        error: statusCode === 500 ? 'Failed to upload lease version' : error.message,
+        message: error.message,
+      });
     }
   }
 );

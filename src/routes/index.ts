@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import documentRoutes from './documentRoutes';
 import leaseRoutes from './leaseRoutes';
 import contractRoutes from './contractRoutes';
 import chatRoutes from './chatRoutes';
@@ -8,6 +9,7 @@ import vectorStoreRoutes from './vectorStoreRoutes';
 
 const router = Router();
 
+router.use('/documents', documentRoutes);
 router.use('/leases', leaseRoutes);
 router.use('/contracts', contractRoutes);
 router.use('/chat', chatRoutes);

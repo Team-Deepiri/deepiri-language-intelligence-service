@@ -7,6 +7,8 @@ import { v4 as uuidv4 } from 'uuid';
 import * as path from 'path';
 import * as mime from 'mime-types';
 import axios from 'axios';
+import pdfParse from 'pdf-parse';
+import mammoth from 'mammoth';
 
 // A presigned URL generated right before use, good only long enough for
 // that one immediate operation (e.g. handing it to Cyrex for extraction).
@@ -20,6 +22,42 @@ export interface UploadResult {
   storageKey: string;
   fileSize: number;
   mimeType: string;
+}
+
+/**
+ * Map MIME type / filename to the file-format labels stored on IntelligenceDocument.documentType.
+ * Distinct from business documentKind (lease, policy, etc.).
+ */
+export function resolveFileDocumentType(
+  mimeType?: string | null,
+  fileNameOrKey?: string | null
+): string {
+  const mime = (mimeType || '').toLowerCase();
+  const name = (fileNameOrKey || '').toLowerCase().split('?')[0];
+
+  if (mime.includes('pdf') || name.endsWith('.pdf')) return 'PDF';
+  if (
+    mime.includes('wordprocessingml') ||
+    mime.includes('msword') ||
+    mime.includes('officedocument.word') ||
+    name.endsWith('.docx') ||
+    name.endsWith('.doc')
+  ) {
+    return 'DOCX';
+  }
+  if (mime.startsWith('text/plain') || name.endsWith('.txt')) return 'TXT';
+  if (mime.includes('markdown') || name.endsWith('.md') || name.endsWith('.markdown')) return 'MD';
+  if (mime.includes('csv') || name.endsWith('.csv')) return 'CSV';
+  if (mime.includes('json') || name.endsWith('.json')) return 'JSON';
+  if (
+    mime.startsWith('image/') ||
+    /\.(jpe?g|png|gif|bmp|webp|tiff?)$/.test(name)
+  ) {
+    return 'IMAGE';
+  }
+  if (mime.startsWith('text/')) return 'TXT';
+
+  return 'UNKNOWN';
 }
 
 export class DocumentService {
@@ -121,60 +159,120 @@ export class DocumentService {
   }
 
   /**
+   * Download a file from storage into a Buffer, straight off the storage
+   * key via the authenticated SDK client — no URL round-tripping needed,
+   * since this never leaves our own process.
+   */
+  private async downloadBuffer(storageKey: string): Promise<Buffer> {
+    const command = new GetObjectCommand({ Bucket: this.bucket, Key: storageKey });
+    const response = await this.s3Client.send(command);
+    if (!response.Body) throw new Error('Empty response from storage');
+
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks);
+  }
+
+  /**
+   * Extract text locally using pdf-parse (PDF), mammoth (DOCX), or direct read (plain text).
+   * Returns null when the file type is not handled locally (e.g. images).
+   */
+  private async extractTextLocal(storageKey: string): Promise<string | null> {
+    const keyLower = storageKey.toLowerCase();
+
+    const isPdf = keyLower.endsWith('.pdf');
+    const isDocx = keyLower.endsWith('.docx') || keyLower.endsWith('.doc');
+    const isPlain =
+      keyLower.endsWith('.txt') ||
+      keyLower.endsWith('.md') ||
+      keyLower.endsWith('.csv') ||
+      keyLower.endsWith('.json');
+
+    if (!isPdf && !isDocx && !isPlain) return null;
+
+    const buffer = await this.downloadBuffer(storageKey);
+
+    if (isPlain) {
+      return buffer.toString('utf-8');
+    }
+
+    if (isPdf) {
+      const result = await pdfParse(buffer);
+      return result.text || '';
+    }
+
+    if (isDocx) {
+      const result = await mammoth.extractRawText({ buffer });
+      return result.value || '';
+    }
+
+    return null;
+  }
+
+  /**
    * Extract text from a document already in our storage.
-   * Calls Cyrex for text extraction (OCR/PDF parsing) — Cyrex fetches the
-   * document itself over HTTP, so this presigns a fresh short-lived URL
-   * right before the call rather than trusting a URL passed in or stored
+   * Tries local extraction first (pdf-parse / mammoth / plain-text read) —
+   * works offline, no Cyrex round-trip for common types. Falls back to
+   * Cyrex for image/OCR types or when local extraction fails; Cyrex fetches
+   * the document itself over HTTP, so this presigns a fresh short-lived URL
+   * right before that call rather than trusting a URL passed in or stored
    * earlier (which may be long expired if this is a reprocessing run).
    */
   async extractText(storageKey: string, documentType?: string): Promise<string> {
-    try {
-      logger.info('Extracting text from document', { storageKey, documentType });
+    logger.info('Extracting text from document', { storageKey, documentType });
 
-      // Determine document type from the storage key if not provided
-      if (!documentType) {
-        const keyLower = storageKey.toLowerCase();
-        if (keyLower.endsWith('.pdf')) {
-          documentType = 'pdf';
-        } else if (keyLower.endsWith('.docx') || keyLower.endsWith('.doc')) {
-          documentType = 'docx';
-        } else if (keyLower.match(/\.(jpg|jpeg|png|gif|bmp)$/)) {
-          documentType = 'image';
-        } else {
-          documentType = 'pdf'; // Default
-        }
+    // Try local extraction — works offline, no Cyrex needed for common types
+    try {
+      const localText = await this.extractTextLocal(storageKey);
+      if (localText !== null) {
+        logger.info('Text extracted locally', { storageKey, length: localText.length });
+        return localText;
       }
+    } catch (localError: any) {
+      logger.warn('Local text extraction failed, falling back to Cyrex', {
+        storageKey,
+        error: localError.message,
+      });
+    }
+
+    // Cyrex fallback (OCR / complex types)
+    try {
+      const fileFormat = resolveFileDocumentType(undefined, storageKey);
+      const resolvedType =
+        documentType ||
+        (fileFormat === 'IMAGE'
+          ? 'image'
+          : fileFormat === 'UNKNOWN'
+            ? 'pdf'
+            : fileFormat.toLowerCase());
 
       const documentUrl = await this.getPresignedDownloadUrl(storageKey, SHORT_LIVED_URL_TTL_SECONDS);
 
-      // Call Cyrex document extraction API
       const response = await axios.post(
         `${config.cyrex.baseUrl}/document-extraction/extract-text`,
+        { documentUrl, documentType: resolvedType },
         {
-          documentUrl,
-          documentType: documentType || 'pdf'
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': config.cyrex.apiKey,
-          },
-          timeout: 120000, // 2 minutes for large documents
+          headers: { 'Content-Type': 'application/json', 'x-api-key': config.cyrex.apiKey },
+          timeout: 120000,
         }
       );
 
-      if (!response.data.success) {
-        throw new Error(response.data.error || 'Text extraction failed');
+      if (!response.data.success) throw new Error(response.data.error || 'Cyrex extraction failed');
+
+      const extractedText = response.data.text || '';
+      if (!extractedText.trim()) {
+        throw new Error('Cyrex extraction returned empty text');
       }
 
-      return response.data.text || '';
-    } catch (error: any) {
-      logger.error('Failed to extract text', {
+      return extractedText;
+    } catch (cyrexError: any) {
+      logger.error('Cyrex text extraction failed', {
         storageKey,
-        documentType,
-        error: error.message,
+        error: cyrexError.message,
       });
-      throw error;
+      throw cyrexError;
     }
   }
 
@@ -201,4 +299,3 @@ export class DocumentService {
 }
 
 export const documentService = new DocumentService();
-
