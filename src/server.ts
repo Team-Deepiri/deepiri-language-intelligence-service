@@ -10,6 +10,7 @@ import { initializeEventPublisher } from './streaming/eventPublisher';
 import { logger } from '@team-deepiri/shared-utils';
 import { validateBodyIfPresent } from './middleware/inputValidation';
 import { bodyParserConfig, requestSizeLimiter } from './middleware/requestLimits';
+import { getBeddHealth, isBeddSanitizeEnabled } from './integrations/beddSanitize';
 
 dotenv.config();
 
@@ -64,17 +65,30 @@ initializeEventPublisher().catch((err) => {
   logger.error('Failed to initialize event publisher:', { error: err.message });
 });
 
+// Log Bedd PII-sanitize status at boot, not just on first document -- an
+// operator watching startup logs should see whether it's actually active.
+// isBeddSanitizeEnabled() also populates getBeddHealth()'s `enabled` flag,
+// which is otherwise a side effect that only fires on the first document.
+{
+  const beddEnabled = isBeddSanitizeEnabled();
+  logger.info(`[Language Intelligence] Bedd PII sanitize: ${beddEnabled ? 'enabled' : 'disabled'}`, {
+    enabled: beddEnabled,
+  });
+}
+
 // Health check
 app.get('/health', async (req: Request, res: Response) => {
   try {
     // Check database connectivity if prisma is initialized
     if (prisma) {
       await prisma.$queryRaw`SELECT 1`;
-      res.status(200).json({ 
-        status: 'healthy', 
+      const bedd = getBeddHealth();
+      res.status(200).json({
+        status: bedd.status === 'degraded' ? 'degraded' : 'healthy',
         service: 'language-intelligence-service',
         database: 'connected',
-        timestamp: new Date().toISOString() 
+        bedd,
+        timestamp: new Date().toISOString()
       });
     } else {
       res.status(503).json({ 
