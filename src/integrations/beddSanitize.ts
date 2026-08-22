@@ -16,7 +16,7 @@ const EVAL_TIMEOUT_MS = 15_000;
 // ingestion can't exhaust the process table. Each call already does two
 // spawns (text + structured), so this caps at MAX_CONCURRENT_EVALS/2
 // in-flight sanitize() calls.
-const MAX_CONCURRENT_EVALS = 8;
+export const MAX_CONCURRENT_EVALS = 8;
 // Consecutive failures at which /health reports Bedd as degraded. Fail-open
 // means a broken Bedd is otherwise invisible -- PII keeps flowing through
 // unredacted with nothing louder than a warn log per call.
@@ -77,20 +77,23 @@ export function getBeddHealth(): BeddHealthState & {
 let inFlightEvals = 0;
 const evalWaitQueue: Array<() => void> = [];
 
-async function acquireEvalSlot(): Promise<() => void> {
+export async function acquireEvalSlot(): Promise<() => void> {
   if (inFlightEvals < MAX_CONCURRENT_EVALS) {
     inFlightEvals += 1;
     return () => releaseEvalSlot();
   }
   await new Promise<void>((resolve) => evalWaitQueue.push(resolve));
-  inFlightEvals += 1;
+  // Slot was transferred by the releaser; do not increment again.
   return () => releaseEvalSlot();
 }
 
 function releaseEvalSlot(): void {
-  inFlightEvals -= 1;
   const next = evalWaitQueue.shift();
-  if (next) next();
+  if (next) {
+    next();
+    return;
+  }
+  inFlightEvals -= 1;
 }
 
 function binaryExists(bin: string): boolean {

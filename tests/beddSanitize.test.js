@@ -40,6 +40,46 @@ async function main() {
   assert.strictEqual(health.enabled, false);
 
   console.log('beddSanitize: pass (health reports disabled)');
+
+  // Concurrent acquire after a release must not grant two slots for one
+  // vacancy. The waiter is woken as a microtask; a same-turn acquire must
+  // queue instead of also incrementing.
+  const { acquireEvalSlot, MAX_CONCURRENT_EVALS } = sanitize;
+  const held = [];
+  for (let i = 0; i < MAX_CONCURRENT_EVALS; i += 1) {
+    held.push(await acquireEvalSlot());
+  }
+
+  let waiterGot = false;
+  let sneakyGot = false;
+  const waiterP = acquireEvalSlot().then((release) => {
+    waiterGot = true;
+    return release;
+  });
+  held[0]();
+  const sneakyP = acquireEvalSlot().then((release) => {
+    sneakyGot = true;
+    return release;
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.strictEqual(waiterGot, true, 'queued waiter should receive the released slot');
+  assert.strictEqual(
+    sneakyGot,
+    false,
+    'a same-turn acquire must not take a second slot while a waiter holds the vacancy'
+  );
+
+  const waiterRelease = await waiterP;
+  waiterRelease();
+  const sneakyRelease = await sneakyP;
+  sneakyRelease();
+  for (let i = 1; i < held.length; i += 1) {
+    held[i]();
+  }
+
+  console.log('beddSanitize: pass (eval slot cap is not exceeded under concurrent acquire)');
 }
 
 main().catch((err) => {
