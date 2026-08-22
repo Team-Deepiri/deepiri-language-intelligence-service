@@ -32,6 +32,14 @@ async function main() {
   assert.deepStrictEqual(out.structuredOutput, input.structuredOutput);
 
   console.log('beddSanitize: pass (disabled path)');
+
+  // getBeddHealth() reflects the disabled binary as 'disabled', not 'ok' or
+  // 'degraded' -- those only apply once Bedd is actually enabled.
+  const health = sanitize.getBeddHealth();
+  assert.strictEqual(health.status, 'disabled');
+  assert.strictEqual(health.enabled, false);
+
+  console.log('beddSanitize: pass (health reports disabled)');
 }
 
 main().catch((err) => {

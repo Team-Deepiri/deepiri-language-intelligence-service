@@ -12,6 +12,86 @@ import { config } from '../config/environment';
 import { logger } from '../utils/logger';
 
 const EVAL_TIMEOUT_MS = 15_000;
+// Bounds concurrent `bedd eval` child processes so a burst of document
+// ingestion can't exhaust the process table. Each call already does two
+// spawns (text + structured), so this caps at MAX_CONCURRENT_EVALS/2
+// in-flight sanitize() calls.
+const MAX_CONCURRENT_EVALS = 8;
+// Consecutive failures at which /health reports Bedd as degraded. Fail-open
+// means a broken Bedd is otherwise invisible -- PII keeps flowing through
+// unredacted with nothing louder than a warn log per call.
+const DEGRADED_AFTER_CONSECUTIVE_FAILURES = 5;
+
+interface BeddHealthState {
+  enabled: boolean;
+  totalCalls: number;
+  totalFailures: number;
+  consecutiveFailures: number;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  lastError: string | null;
+}
+
+const health: BeddHealthState = {
+  enabled: false,
+  totalCalls: 0,
+  totalFailures: 0,
+  consecutiveFailures: 0,
+  lastSuccessAt: null,
+  lastFailureAt: null,
+  lastError: null,
+};
+
+function recordSuccess(): void {
+  health.totalCalls += 1;
+  health.consecutiveFailures = 0;
+  health.lastSuccessAt = new Date().toISOString();
+}
+
+function recordFailure(error: string): void {
+  health.totalCalls += 1;
+  health.totalFailures += 1;
+  health.consecutiveFailures += 1;
+  health.lastFailureAt = new Date().toISOString();
+  health.lastError = error;
+}
+
+/**
+ * Bedd health snapshot for /health. `status` is 'degraded' once
+ * consecutiveFailures crosses DEGRADED_AFTER_CONSECUTIVE_FAILURES, since
+ * fail-open otherwise hides a broken redaction path behind 200s.
+ */
+export function getBeddHealth(): BeddHealthState & {
+  status: 'disabled' | 'ok' | 'degraded';
+} {
+  if (!health.enabled) {
+    return { ...health, status: 'disabled' };
+  }
+  const status =
+    health.consecutiveFailures >= DEGRADED_AFTER_CONSECUTIVE_FAILURES
+      ? 'degraded'
+      : 'ok';
+  return { ...health, status };
+}
+
+let inFlightEvals = 0;
+const evalWaitQueue: Array<() => void> = [];
+
+async function acquireEvalSlot(): Promise<() => void> {
+  if (inFlightEvals < MAX_CONCURRENT_EVALS) {
+    inFlightEvals += 1;
+    return () => releaseEvalSlot();
+  }
+  await new Promise<void>((resolve) => evalWaitQueue.push(resolve));
+  inFlightEvals += 1;
+  return () => releaseEvalSlot();
+}
+
+function releaseEvalSlot(): void {
+  inFlightEvals -= 1;
+  const next = evalWaitQueue.shift();
+  if (next) next();
+}
 
 function binaryExists(bin: string): boolean {
   try {
@@ -24,10 +104,9 @@ function binaryExists(bin: string): boolean {
 
 export function isBeddSanitizeEnabled(): boolean {
   const flag = config.bedd.enabled;
-  if (flag === true) return binaryExists(config.bedd.bin);
-  if (flag === false) return false;
-  // auto: use Bedd when the binary is present (Docker image embeds it)
-  return binaryExists(config.bedd.bin);
+  const enabled = flag === false ? false : binaryExists(config.bedd.bin);
+  health.enabled = enabled;
+  return enabled;
 }
 
 function unwrapStrikeData(parsed: unknown): unknown {
@@ -74,56 +153,64 @@ export async function beddEvalJson(
   const bin = config.bedd.bin;
   const input = JSON.stringify(payload);
 
-  return new Promise((resolve, reject) => {
-    const child = spawn(bin, ['eval', skill, input], {
-      env: {
-        ...process.env,
-        BEDD_SKILLS_DIR: config.bedd.skillsDir || process.env.BEDD_SKILLS_DIR,
-        BEDD_DROP_FIELDS: config.bedd.dropFields || process.env.BEDD_DROP_FIELDS,
-        BEDD_LEAN: process.env.BEDD_LEAN || '1',
-      },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+  const release = await acquireEvalSlot();
+  try {
+    return await new Promise((resolve, reject) => {
+      const child = spawn(bin, ['eval', skill, input], {
+        // Minimal, explicit env for a binary that handles PII payloads --
+        // no reason to hand it the full process env (secrets, other
+        // services' credentials) just to run a redaction pass.
+        env: {
+          PATH: process.env.PATH || '',
+          BEDD_SKILLS_DIR: config.bedd.skillsDir || process.env.BEDD_SKILLS_DIR || '',
+          BEDD_DROP_FIELDS: config.bedd.dropFields || process.env.BEDD_DROP_FIELDS || '',
+          BEDD_LEAN: process.env.BEDD_LEAN || '1',
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
 
-    let stdout = '';
-    let stderr = '';
-    const timer = setTimeout(() => {
-      child.kill('SIGKILL');
-      reject(new Error(`bedd eval timed out after ${EVAL_TIMEOUT_MS}ms`));
-    }, EVAL_TIMEOUT_MS);
+      let stdout = '';
+      let stderr = '';
+      const timer = setTimeout(() => {
+        child.kill('SIGKILL');
+        reject(new Error(`bedd eval timed out after ${EVAL_TIMEOUT_MS}ms`));
+      }, EVAL_TIMEOUT_MS);
 
-    child.stdout.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString('utf8');
-    });
-    child.stderr.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString('utf8');
-    });
+      child.stdout.on('data', (chunk: Buffer) => {
+        stdout += chunk.toString('utf8');
+      });
+      child.stderr.on('data', (chunk: Buffer) => {
+        stderr += chunk.toString('utf8');
+      });
 
-    child.on('error', (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
+      child.on('error', (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
 
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      if (code !== 0) {
-        reject(
-          new Error(
-            `bedd eval exited ${code}: ${(stderr || stdout).trim().slice(0, 500)}`
-          )
-        );
-        return;
-      }
-      try {
-        const line = stdout.trim().split('\n').filter(Boolean).pop() || '{}';
-        resolve(unwrapStrikeData(JSON.parse(line)));
-      } catch (err: any) {
-        reject(
-          new Error(`bedd eval returned non-JSON: ${err?.message || String(err)}`)
-        );
-      }
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        if (code !== 0) {
+          reject(
+            new Error(
+              `bedd eval exited ${code}: ${(stderr || stdout).trim().slice(0, 500)}`
+            )
+          );
+          return;
+        }
+        try {
+          const line = stdout.trim().split('\n').filter(Boolean).pop() || '{}';
+          resolve(unwrapStrikeData(JSON.parse(line)));
+        } catch (err: any) {
+          reject(
+            new Error(`bedd eval returned non-JSON: ${err?.message || String(err)}`)
+          );
+        }
+      });
     });
-  });
+  } finally {
+    release();
+  }
 }
 
 /**
@@ -155,11 +242,18 @@ export async function sanitizeDocumentRoutePayloads(input: {
       structuredOutput = await beddEvalJson(structuredOutput);
     }
 
+    recordSuccess();
     return { rawText, structuredOutput, beddApplied: true };
   } catch (err: any) {
-    logger.warn('[Language Intelligence] Bedd sanitize failed; publishing unsanitized', {
-      error: err?.message || String(err),
+    const message = err?.message || String(err);
+    recordFailure(message);
+    const logFn = health.consecutiveFailures >= DEGRADED_AFTER_CONSECUTIVE_FAILURES
+      ? logger.error.bind(logger)
+      : logger.warn.bind(logger);
+    logFn('[Language Intelligence] Bedd sanitize failed; publishing unsanitized', {
+      error: message,
       skill: config.bedd.skill,
+      consecutiveFailures: health.consecutiveFailures,
     });
     return {
       rawText: input.rawText,
