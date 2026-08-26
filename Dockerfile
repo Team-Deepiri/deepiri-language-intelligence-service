@@ -21,12 +21,33 @@ ENV BEDD_SKILLS_DIR=/opt/bedd/skills
 ENV BEDD_BUS_URL=redis://redis:6379
 ENV BEDD_DLQ_STREAM=bedd.dlq
 
-# Copy package files (@team-deepiri/shared-utils from published git tag in package-lock)
+# @team-deepiri/shared-utils is a local `file:` dependency (package-lock.json's
+# entries for it are not a resolvable published-tag reference, despite the old
+# comment here claiming otherwise) — build it locally and strip its lockfile
+# entries before `npm ci`, same pattern as every other Node service in this repo.
+# Skipping this crashes npm's arborist on Alpine/musl (EUSAGE "no valid lockfile"
+# is a red herring; --loglevel silly shows the real error is a TypeError in
+# loadVirtual trying to resolve the unresolvable file: link entry).
+COPY shared/deepiri-shared-utils/package.json /shared/deepiri-shared-utils/
+COPY shared/deepiri-shared-utils/package-lock.json /shared/deepiri-shared-utils/
+COPY shared/deepiri-shared-utils/tsconfig.json /shared/deepiri-shared-utils/
+COPY shared/deepiri-shared-utils/src /shared/deepiri-shared-utils/src
 COPY backend/deepiri-language-intelligence-service/package*.json ./
 COPY backend/deepiri-language-intelligence-service/tsconfig.json ./
 
 RUN apk add --no-cache git \
+ && node -e "const fs=require('fs'),lock=JSON.parse(fs.readFileSync('package-lock.json'));for(const k of Object.keys(lock.packages)){if(k.includes('deepiri-shared-utils')||k==='node_modules/@team-deepiri/shared-utils')delete lock.packages[k]}fs.writeFileSync('package-lock.json',JSON.stringify(lock));" \
+ && cd /shared/deepiri-shared-utils \
  && npm ci --legacy-peer-deps \
+ && npm run build \
+ && node -e "const fs=require('fs'),p=JSON.parse(fs.readFileSync('package.json'));delete p.scripts.prepare;fs.writeFileSync('package.json',JSON.stringify(p,null,2));" \
+ && rm -rf node_modules \
+ && cd /app \
+ && npm install --legacy-peer-deps file:/shared/deepiri-shared-utils \
+ && npm ci --legacy-peer-deps \
+ && cd /shared/deepiri-shared-utils \
+ && npm ci --omit=dev --legacy-peer-deps \
+ && cd /app \
  && npm cache clean --force
 
 # Copy source code

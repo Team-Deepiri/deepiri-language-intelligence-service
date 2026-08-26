@@ -8,6 +8,7 @@ import { documentService, resolveFileDocumentType } from '../services/documentSe
 import { authenticate } from './middleware/auth';
 import { logger } from '@team-deepiri/shared-utils';
 import { validate } from '../middleware/inputValidation';
+import { documentReadRateLimiter } from '../middleware/rateLimiters';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -23,13 +24,6 @@ const listRateLimiter = rateLimit({
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
-});
-const documentReadRateLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 120,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many document read requests, please try again later.' },
 });
 const reprocessRateLimiter = rateLimit({
   windowMs: 60 * 1000,

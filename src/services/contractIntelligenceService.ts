@@ -324,13 +324,20 @@ export class ContractIntelligenceService {
       input.versionNumber
     );
 
+    // documentUrl on the Contract row is a storageKey now, not a fetchable link
+    // (see documentService.getPresignedDownloadUrl) — presign fresh here rather
+    // than handing the raw key to publishDocumentRoutes as if it were a URL.
+    const routingDocumentUrl = await documentService.getPresignedDownloadUrl(
+      input.contract.documentStorageKey ?? input.contract.documentUrl
+    );
+
     let routingResult: DocumentRoutePublicationResult;
     try {
       routingResult = await documentRoutePublicationService.publishDocumentRoutes({
         document: {
           id: input.contract.id,
           title: input.contract.contractName,
-          documentUrl: input.contract.documentUrl,
+          documentUrl: routingDocumentUrl,
           documentStorageKey: input.contract.documentStorageKey,
           contentType: input.contract.documentType,
           fileSize: input.contract.fileSize,

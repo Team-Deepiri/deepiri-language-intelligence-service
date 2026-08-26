@@ -16,6 +16,8 @@ model Lease {
   propertyAddress      String         @map("property_address") @db.VarChar(500)
   propertyType         String?        @map("property_type") @db.VarChar(100)
   squareFootage        Int?           @map("square_footage")
+  /// Despite the name, this stores a storage key (not a fetchable URL) —
+  /// see documentService.getPresignedDownloadUrl for generating a working link.
   documentUrl          String         @map("document_url")
   documentStorageKey   String?        @map("document_storage_key") @db.VarChar(255)
   rawText              String?        @map("raw_text")
@@ -60,6 +62,7 @@ model LeaseVersion {
   id                 String   @id @default(uuid()) @db.Uuid
   leaseId            String   @map("lease_id") @db.Uuid
   versionNumber      Int      @map("version_number")
+  /// Storage key, not a fetchable URL — see documentService.getPresignedDownloadUrl.
   documentUrl        String   @map("document_url")
   rawText            String   @map("raw_text")
   abstractedTerms    Json     @map("abstracted_terms")
@@ -90,6 +93,8 @@ model Contract {
   jurisdiction         String?                @db.VarChar(100)
   effectiveDate        DateTime               @map("effective_date") @db.Timestamp(6)
   expirationDate       DateTime?              @map("expiration_date") @db.Timestamp(6)
+  /// Despite the name, this stores a storage key (not a fetchable URL) —
+  /// see documentService.getPresignedDownloadUrl for generating a working link.
   documentUrl          String                 @map("document_url")
   documentStorageKey   String?                @map("document_storage_key") @db.VarChar(255)
   rawText              String?                @map("raw_text")
@@ -165,6 +170,7 @@ model ContractVersion {
   id                 String   @id @default(uuid()) @db.Uuid
   contractId         String   @map("contract_id") @db.Uuid
   versionNumber      Int      @map("version_number")
+  /// Storage key, not a fetchable URL — see documentService.getPresignedDownloadUrl.
   documentUrl        String   @map("document_url")
   rawText            String   @map("raw_text")
   abstractedTerms    Json     @map("abstracted_terms")
@@ -268,6 +274,8 @@ model IntelligenceDocument {
   documentKind         String                    @map("document_kind") @db.VarChar(120)
   intelligenceProfile  String                    @map("intelligence_profile") @db.VarChar(120)
   profileHints         Json?                     @map("profile_hints")
+  /// Despite the name, this stores a storage key (not a fetchable URL) —
+  /// see documentService.getPresignedDownloadUrl for generating a working link.
   documentUrl          String                    @map("document_url")
   documentStorageKey   String?                   @map("document_storage_key") @db.VarChar(255)
   rawText              String?                   @map("raw_text")
@@ -312,6 +320,7 @@ model IntelligenceDocumentVersion {
   id                     String               @id @default(uuid()) @db.Uuid
   intelligenceDocumentId String               @map("intelligence_document_id") @db.Uuid
   versionNumber          Int                  @map("version_number")
+  /// Storage key, not a fetchable URL — see documentService.getPresignedDownloadUrl.
   documentUrl            String               @map("document_url")
   rawText                String               @map("raw_text")
   abstractedTerms        Json                 @map("abstracted_terms")

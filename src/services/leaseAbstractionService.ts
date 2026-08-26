@@ -196,13 +196,20 @@ export class LeaseAbstractionService {
       input.versionNumber
     );
 
+    // documentUrl on the Lease row is a storageKey now, not a fetchable link
+    // (see documentService.getPresignedDownloadUrl) — presign fresh here rather
+    // than handing the raw key to publishDocumentRoutes as if it were a URL.
+    const routingDocumentUrl = await documentService.getPresignedDownloadUrl(
+      input.lease.documentStorageKey ?? input.lease.documentUrl
+    );
+
     let routingResult: DocumentRoutePublicationResult;
     try {
       routingResult = await documentRoutePublicationService.publishDocumentRoutes({
         document: {
           id: input.lease.id,
           title: `Lease ${input.lease.leaseNumber}`,
-          documentUrl: input.lease.documentUrl,
+          documentUrl: routingDocumentUrl,
           documentStorageKey: input.lease.documentStorageKey,
           contentType: input.lease.documentType,
           fileSize: input.lease.fileSize,
