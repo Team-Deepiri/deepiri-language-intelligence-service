@@ -9,7 +9,7 @@ import {
   buildDocumentRoutingMetadata,
   buildDocumentRoutingFailureMetadata,
 } from './documentRoutePublicationService';
-import { sanitizeDocumentRoutePayloads } from '../integrations/beddSanitize';
+import { sanitizeDocumentRoutePayloads } from '../integrations/piiSanitize';
 import { logger } from '@team-deepiri/shared-utils';
 import { resolveAbstractPipeline } from './intelligenceProfileResolver';
 import type { IntelligenceDocument, IntelligenceDocumentVersion, Prisma } from '@prisma/client';
@@ -226,14 +226,14 @@ export class IntelligenceDocumentService {
 
       // Document bus cohesion: publish document.* routes via Sugar Glider (ModelKit topics).
       // Platform lifecycle events above stay on platform-events; this fans out the LIS docs bus.
-      // Optional Bedd skill pass (LIS-only) before publish — never a platform-wide hop.
+      // Strip sensitive fields from the structured extraction before publish.
       const schemaId = `intelligence.${updated.intelligenceProfile || updated.documentKind || 'document'}`;
       const schemaVersion = '1';
       const manifestVersion = documentRoutePublicationService.getDocumentManifestVersion(
         version.versionNumber
       );
       try {
-        const sanitized = await sanitizeDocumentRoutePayloads({
+        const sanitized = sanitizeDocumentRoutePayloads({
           rawText: extractedText,
           structuredOutput: {
             abstractedTerms: extractedTerms,
@@ -271,7 +271,7 @@ export class IntelligenceDocumentService {
             intelligenceProfile: updated.intelligenceProfile,
             documentKind: updated.documentKind,
             correlationId,
-            beddApplied: sanitized.beddApplied,
+            piiFieldsStripped: true,
           },
         });
 

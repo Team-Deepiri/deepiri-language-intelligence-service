@@ -14,7 +14,7 @@
     "prisma:baseline": "bash scripts/baseline-migration.sh",
     "prisma:studio": "prisma studio",
     "smoke:test": "node scripts/smoke-test.js",
-    "test": "npm run build && node tests/beddSanitize.test.js && node scripts/run-node-tests.js",
+    "test": "npm run build && node tests/piiSanitize.test.js && node scripts/run-node-tests.js",
     "test:document-routing": "npm test"
   },
   "keywords": [
