@@ -70,13 +70,14 @@ Your database is now in sync with your schema.
 ✓ Generated Prisma Client (v5.22.0) to ./node_modules/@prisma/client in 45ms
 ```
 
-This creates the following **6 new tables:**
+This creates the following **5 new tables:**
 - `documents`
 - `document_chunks`
 - `analysis_jobs`
 - `analysis_results`
-- `embeddings`
 - `prompt_templates`
+
+Embeddings are not stored in LIS. Chunk vectors go to Cyrex/Milvus via the `document.vectorize` bus route.
 
 Plus **2 new enums:**
 - `JobStatus`
@@ -104,14 +105,12 @@ node scripts/smoke-test.js
 ✓ Created job: ...
 [Step 4] Creating AnalysisResult...
 ✓ Created result: ...
-[Step 5] Creating Embedding with fallback vector...
-✓ Created embedding: ...
-[Step 6] Counting records before delete...
-  Documents: 1, Chunks: 2, Jobs: 1, Results: 1, Embeddings: 1
-[Step 7] Deleting Document (should cascade)...
+[Step 5] Counting records before delete...
+  Documents: 1, Chunks: 2, Jobs: 1, Results: 1
+[Step 6] Deleting Document (should cascade)...
 ✓ Document deleted
-[Step 8] Counting records after delete...
-  Documents: 0, Chunks: 0, Jobs: 0, Results: 0, Embeddings: 0
+[Step 7] Counting records after delete...
+  Documents: 0, Chunks: 0, Jobs: 0, Results: 0
 [Result] Cascade delete verification:
 ✅ PASS: All cascade deletes worked as expected.
 ```
@@ -149,70 +148,9 @@ curl http://localhost:3000/health
 
 ---
 
-## Optional: pgVector Setup (For Vector Search)
+## Vector search lives downstream
 
-If you plan to use vector embeddings with pgvector (for fast similarity search):
-
-### 1. Enable pgVector Extension
-
-```bash
-# Connect to your PostgreSQL database
-psql -U user -d deepiri_intelligence
-
-# Run once:
-CREATE EXTENSION IF NOT EXISTS vector;
-
-# Verify:
-SELECT * FROM pg_extension WHERE extname = 'vector';
-```
-
-### 2. Create Vector Index (Manual SQL)
-
-After migrations have run, create an index for efficient similarity search:
-
-```sql
--- Cosine similarity (recommended for embeddings)
-CREATE INDEX idx_embeddings_vector_cosine
-ON embeddings USING ivfflat (vector vector_cosine_ops)
-WHERE vector IS NOT NULL;
-```
-
-Or for L2 distance (Euclidean):
-```sql
-CREATE INDEX idx_embeddings_vector_l2
-ON embeddings USING ivfflat (vector vector_l2_ops)
-WHERE vector IS NOT NULL;
-```
-
-### 3. Use in Code
-
-```typescript
-import { prisma } from './db';
-
-// If pgvector is enabled, you can store real vectors:
-const embedding = await prisma.embedding.create({
-  data: {
-    userId,
-    chunkId,
-    model: 'sentence-transformers/all-MiniLM-L6-v2',
-    dims: 384,
-    vector: [0.1, 0.2, 0.3, ...], // pgvector column
-    metadata: { source: 'test' },
-  },
-});
-
-// If pgvector NOT enabled, use fallback:
-const embedding = await prisma.embedding.create({
-  data: {
-    userId,
-    chunkId,
-    model: 'my-model',
-    dims: 3,
-    vector_fallback: [0.1, 0.2, 0.3], // JSON array
-    metadata: { source: 'test' },
-  },
-});
-```
+LIS does not persist embeddings. Publish `document.vectorize` on the message bus; Cyrex indexes chunks into Milvus. Do not call `prisma.embedding.*` — that model was dropped.
 
 ---
 
@@ -250,18 +188,6 @@ curl https://api.example.com/health
 # Should return:
 # { "status": "healthy", "service": "language-intelligence-service", ... }
 ```
-
-### 5. (Optional) Enable pgVector
-
-```bash
-# If using pgvector for production, run once:
-psql -U prod-user -d deepiri-prod -c "CREATE EXTENSION IF NOT EXISTS vector;"
-
-# Then create index:
-psql -U prod-user -d deepiri-prod -c "CREATE INDEX idx_embeddings_vector_cosine ON embeddings USING ivfflat (vector vector_cosine_ops) WHERE vector IS NOT NULL;"
-```
-
----
 
 ## Docker Deployment
 
@@ -330,15 +256,6 @@ export DATABASE_URL="postgresql://postgres:pass@localhost:5432/deepiri_intellige
 npx prisma migrate dev --name "add_language_intelligence_models"
 npm run smoke:test
 ```
-
-### ❌ pgvector "type vector does not exist"
-
-**Cause:** Extension not enabled  
-**Options:**
-1. Enable it: `CREATE EXTENSION IF NOT EXISTS vector;`
-2. Or use fallback: `vector_fallback` JSON array (already supported)
-
----
 
 ## Monitoring & Verification
 

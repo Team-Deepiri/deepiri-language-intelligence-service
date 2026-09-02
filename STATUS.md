@@ -4,12 +4,12 @@
 
 A **production-ready Language Intelligence Service** with:
 
-✅ **6 new Prisma models** (Document, DocumentChunk, AnalysisJob, AnalysisResult, Embedding, PromptTemplate)  
+✅ **5 new Prisma models** (Document, DocumentChunk, AnalysisJob, AnalysisResult, PromptTemplate)  
 ✅ **2 new enums** (JobStatus, AnalysisType)  
 ✅ **Proper relations** with cascade deletes  
 ✅ **UUID primary keys** + auto timestamps  
 ✅ **Multi-tenant safety** (userId indexed on all models)  
-✅ **pgvector optional** + JSON fallback  
+✅ **Vector search is downstream** (Cyrex/Milvus via `document.vectorize`)  
 ✅ **Express server solid** (middleware, health, graceful shutdown)  
 ✅ **Smoke test** (validates cascade deletes)  
 ✅ **Schema validated** (npx prisma validate → PASS)  
@@ -35,7 +35,7 @@ All created and ready:
    - Validation results
 
 3. **`PRODUCTION_NOTES.md`** (11.1 KB)
-   - pgvector setup (optional)
+   - vector search is downstream (Cyrex/Milvus)
    - Environment variables checklist
    - Migration strategy
    - Best practices & risks
@@ -73,7 +73,7 @@ npx prisma validate
 ### Step 2: Migrate
 ```bash
 npx prisma migrate dev --name "add_language_intelligence_models"
-# Creates 6 new tables in PostgreSQL
+# Creates 5 new tables in PostgreSQL
 ```
 
 ### Step 3: Test
@@ -92,9 +92,8 @@ Follow `QUICK_START.md` → "Production Deployment Steps"
 ```
 Document
 ├─ 1:many → DocumentChunk (cascade delete)
-├─ 1:many → AnalysisJob (cascade delete)
-│              └─ 1:1 → AnalysisResult (cascade delete)
-└─ Chunk 1:many → Embedding (cascade delete)
+└─ 1:many → AnalysisJob (cascade delete)
+               └─ 1:1 → AnalysisResult (cascade delete)
 
 PromptTemplate (versioned by userId)
 ```
@@ -105,7 +104,6 @@ PromptTemplate (versioned by userId)
 - ✅ UUID primary keys
 - ✅ Cascade deletes prevent orphans
 - ✅ JSON fields for metadata/results
-- ✅ pgvector + fallback support
 
 ---
 
@@ -160,7 +158,7 @@ SELECT tablename FROM pg_tables WHERE schemaname = 'public'
 ORDER BY tablename;
 
 -- Should include: documents, document_chunks, analysis_jobs, 
---                 analysis_results, embeddings, prompt_templates
+--                 analysis_results, prompt_templates
 ```
 
 ---
@@ -184,7 +182,7 @@ Cascade deletes | `PRODUCTION_NOTES.md` → "Best Practices & Risks"
 Running commands | `QUICK_START.md` → "Step-by-Step"
 Deployment | `PRODUCTION_NOTES.md` → "Migrations" section
 Testing | `FINAL_DELIVERABLES.md` → "4️⃣ Smoke Test"
-pgvector | `PRODUCTION_NOTES.md` → "pgVector Support" or `QUICK_START.md`
+Vector search | Cyrex/Milvus via `document.vectorize` (not LIS Postgres)
 
 ---
 
@@ -192,9 +190,9 @@ pgvector | `PRODUCTION_NOTES.md` → "pgVector Support" or `QUICK_START.md`
 
 | Metric | Value |
 |--------|-------|
-| **New Models** | 6 |
+| **New Models** | 5 |
 | **New Enums** | 2 |
-| **New Tables** | 6 |
+| **New Tables** | 5 |
 | **New Indexes** | 15+ |
 | **Cascade Relations** | 6 |
 | **Documentation Pages** | 4 |
@@ -222,13 +220,13 @@ pgvector | `PRODUCTION_NOTES.md` → "pgVector Support" or `QUICK_START.md`
 ## 🎉 Summary
 
 **You now have:**
-- ✅ A complete, validated Prisma schema with 6 new models
+- ✅ A complete, validated Prisma schema with 5 new models
 - ✅ Production-ready database client with graceful shutdown
 - ✅ A comprehensive smoke test that validates cascade deletes
 - ✅ 4 detailed documentation files (migration, deployment, best practices, quick start)
 - ✅ All Express middleware, health endpoint, and error handling
 - ✅ Multi-tenant safety (userId indexed everywhere)
-- ✅ Optional pgvector support with JSON fallback
+- ✅ Vector search is downstream (Cyrex/Milvus via `document.vectorize`)
 - ✅ Ready to migrate, test, and deploy
 
 **Next Step:** Run `npx prisma migrate dev --name "add_language_intelligence_models"` and `npm run smoke:test`
