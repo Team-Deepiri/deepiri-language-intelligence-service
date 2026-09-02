@@ -1,4 +1,5 @@
 import { S3Client, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Upload } from '@aws-sdk/lib-storage';
 import { config } from '../config/environment';
 import { logger } from '@team-deepiri/shared-utils';
@@ -9,8 +10,15 @@ import axios from 'axios';
 import pdfParse from 'pdf-parse';
 import mammoth from 'mammoth';
 
+// A presigned URL generated right before use, good only long enough for
+// that one immediate operation (e.g. handing it to Cyrex for extraction).
+// Never persist this — see getPresignedDownloadUrl for on-demand links.
+const SHORT_LIVED_URL_TTL_SECONDS = 600; // 10 minutes
+const DEFAULT_DOWNLOAD_URL_TTL_SECONDS = 900; // 15 minutes
+
 export interface UploadResult {
-  url: string;
+  /** Stable reference — safe to persist. Not a fetchable URL by itself;
+   *  get a working link via getPresignedDownloadUrl(storageKey). */
   storageKey: string;
   fileSize: number;
   mimeType: string;
@@ -22,10 +30,10 @@ export interface UploadResult {
  */
 export function resolveFileDocumentType(
   mimeType?: string | null,
-  fileNameOrUrl?: string | null
+  fileNameOrKey?: string | null
 ): string {
   const mime = (mimeType || '').toLowerCase();
-  const name = (fileNameOrUrl || '').toLowerCase().split('?')[0];
+  const name = (fileNameOrKey || '').toLowerCase().split('?')[0];
 
   if (mime.includes('pdf') || name.endsWith('.pdf')) return 'PDF';
   if (
@@ -59,7 +67,8 @@ export class DocumentService {
   constructor() {
     this.bucket = config.storage.bucket;
 
-    if (config.storage.provider === 's3') {
+    if (config.storage.provider === 's3' && !config.storage.endpoint) {
+      // Real AWS S3: no custom endpoint, virtual-hosted-style addressing.
       this.s3Client = new S3Client({
         region: config.storage.region,
         credentials: {
@@ -67,7 +76,16 @@ export class DocumentService {
           secretAccessKey: config.storage.secretAccessKey,
         },
       });
-    } else if (config.storage.provider === 'minio') {
+    } else {
+      // Any S3-compatible provider (MinIO, Cloudflare R2, Backblaze B2, DO
+      // Spaces, Wasabi, ...) — driven by STORAGE_ENDPOINT rather than a
+      // hardcoded provider allowlist, so this doesn't crash on boot just
+      // because STORAGE_PROVIDER isn't literally 's3' or 'minio'.
+      if (!config.storage.endpoint) {
+        throw new Error(
+          `STORAGE_ENDPOINT is required when STORAGE_PROVIDER ("${config.storage.provider}") isn't plain 's3'`
+        );
+      }
       this.s3Client = new S3Client({
         endpoint: config.storage.endpoint,
         region: config.storage.region,
@@ -77,8 +95,6 @@ export class DocumentService {
         },
         forcePathStyle: true,
       });
-    } else {
-      throw new Error(`Unsupported storage provider: ${config.storage.provider}`);
     }
   }
 
@@ -111,10 +127,6 @@ export class DocumentService {
 
       await upload.done();
 
-      const url = config.storage.provider === 's3'
-        ? `https://${this.bucket}.s3.${config.storage.region}.amazonaws.com/${storageKey}`
-        : `${config.storage.endpoint}/${this.bucket}/${storageKey}`;
-
       logger.info('Document uploaded', {
         storageKey,
         fileSize: file.size,
@@ -122,36 +134,36 @@ export class DocumentService {
       });
 
       return {
-        url,
         storageKey,
         fileSize: file.size,
         mimeType,
       };
     } catch (error: any) {
       logger.error('Failed to upload document', { error: error.message });
-      throw new Error(`Document upload failed: ${error.message}`);
+      throw error;
     }
   }
 
   /**
-   * Download a file from storage into a Buffer using the S3 client.
-   * Derives the storage key from the documentUrl.
+   * Generate a fresh, time-limited link to an object — call this on demand
+   * (e.g. from a "download" endpoint) rather than persisting the result.
+   * Objects are private by default (no ACL is set on upload), so this is
+   * the only supported way to get a working link to one.
    */
-  private async downloadBuffer(documentUrl: string): Promise<Buffer> {
-    const prefix = `${config.storage.endpoint}/${config.storage.bucket}/`;
-    let storageKey: string;
+  async getPresignedDownloadUrl(
+    storageKey: string,
+    expiresInSeconds: number = DEFAULT_DOWNLOAD_URL_TTL_SECONDS
+  ): Promise<string> {
+    const command = new GetObjectCommand({ Bucket: this.bucket, Key: storageKey });
+    return getSignedUrl(this.s3Client, command, { expiresIn: expiresInSeconds });
+  }
 
-    if (documentUrl.startsWith(prefix)) {
-      storageKey = documentUrl.slice(prefix.length);
-    } else {
-      const parsed = new URL(documentUrl);
-      const pathKey = parsed.pathname.replace(/^\/+/, '');
-      const pathStylePrefix = `${config.storage.bucket}/`;
-      storageKey = pathKey.startsWith(pathStylePrefix)
-        ? pathKey.slice(pathStylePrefix.length)
-        : pathKey;
-    }
-
+  /**
+   * Download a file from storage into a Buffer, straight off the storage
+   * key via the authenticated SDK client — no URL round-tripping needed,
+   * since this never leaves our own process.
+   */
+  private async downloadBuffer(storageKey: string): Promise<Buffer> {
     const command = new GetObjectCommand({ Bucket: this.bucket, Key: storageKey });
     const response = await this.s3Client.send(command);
     if (!response.Body) throw new Error('Empty response from storage');
@@ -167,20 +179,20 @@ export class DocumentService {
    * Extract text locally using pdf-parse (PDF), mammoth (DOCX), or direct read (plain text).
    * Returns null when the file type is not handled locally (e.g. images).
    */
-  private async extractTextLocal(documentUrl: string): Promise<string | null> {
-    const urlLower = documentUrl.toLowerCase().split('?')[0];
+  private async extractTextLocal(storageKey: string): Promise<string | null> {
+    const keyLower = storageKey.toLowerCase();
 
-    const isPdf = urlLower.endsWith('.pdf');
-    const isDocx = urlLower.endsWith('.docx') || urlLower.endsWith('.doc');
+    const isPdf = keyLower.endsWith('.pdf');
+    const isDocx = keyLower.endsWith('.docx') || keyLower.endsWith('.doc');
     const isPlain =
-      urlLower.endsWith('.txt') ||
-      urlLower.endsWith('.md') ||
-      urlLower.endsWith('.csv') ||
-      urlLower.endsWith('.json');
+      keyLower.endsWith('.txt') ||
+      keyLower.endsWith('.md') ||
+      keyLower.endsWith('.csv') ||
+      keyLower.endsWith('.json');
 
     if (!isPdf && !isDocx && !isPlain) return null;
 
-    const buffer = await this.downloadBuffer(documentUrl);
+    const buffer = await this.downloadBuffer(storageKey);
 
     if (isPlain) {
       return buffer.toString('utf-8');
@@ -200,30 +212,34 @@ export class DocumentService {
   }
 
   /**
-   * Extract text from a document.
-   * Tries local extraction first (pdf-parse / mammoth / plain-text read).
-   * Falls back to Cyrex for image/OCR types or when local extraction fails.
+   * Extract text from a document already in our storage.
+   * Tries local extraction first (pdf-parse / mammoth / plain-text read) —
+   * works offline, no Cyrex round-trip for common types. Falls back to
+   * Cyrex for image/OCR types or when local extraction fails; Cyrex fetches
+   * the document itself over HTTP, so this presigns a fresh short-lived URL
+   * right before that call rather than trusting a URL passed in or stored
+   * earlier (which may be long expired if this is a reprocessing run).
    */
-  async extractText(documentUrl: string, documentType?: string): Promise<string> {
-    logger.info('Extracting text from document', { documentUrl, documentType });
+  async extractText(storageKey: string, documentType?: string): Promise<string> {
+    logger.info('Extracting text from document', { storageKey, documentType });
 
     // Try local extraction — works offline, no Cyrex needed for common types
     try {
-      const localText = await this.extractTextLocal(documentUrl);
+      const localText = await this.extractTextLocal(storageKey);
       if (localText !== null) {
-        logger.info('Text extracted locally', { documentUrl, length: localText.length });
+        logger.info('Text extracted locally', { storageKey, length: localText.length });
         return localText;
       }
     } catch (localError: any) {
       logger.warn('Local text extraction failed, falling back to Cyrex', {
-        documentUrl,
+        storageKey,
         error: localError.message,
       });
     }
 
     // Cyrex fallback (OCR / complex types)
     try {
-      const fileFormat = resolveFileDocumentType(undefined, documentUrl);
+      const fileFormat = resolveFileDocumentType(undefined, storageKey);
       const resolvedType =
         documentType ||
         (fileFormat === 'IMAGE'
@@ -231,6 +247,8 @@ export class DocumentService {
           : fileFormat === 'UNKNOWN'
             ? 'pdf'
             : fileFormat.toLowerCase());
+
+      const documentUrl = await this.getPresignedDownloadUrl(storageKey, SHORT_LIVED_URL_TTL_SECONDS);
 
       const response = await axios.post(
         `${config.cyrex.baseUrl}/document-extraction/extract-text`,
@@ -251,10 +269,10 @@ export class DocumentService {
       return extractedText;
     } catch (cyrexError: any) {
       logger.error('Cyrex text extraction failed', {
-        documentUrl,
+        storageKey,
         error: cyrexError.message,
       });
-      throw new Error(`Text extraction failed: ${cyrexError.message}`);
+      throw cyrexError;
     }
   }
 
@@ -275,7 +293,7 @@ export class DocumentService {
         storageKey,
         error: error.message,
       });
-      throw new Error(`Document deletion failed: ${error.message}`);
+      throw error;
     }
   }
 }
