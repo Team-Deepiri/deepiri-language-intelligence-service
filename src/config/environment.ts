@@ -50,23 +50,13 @@ export const config = {
   },
 
   /**
-   * Bedd — optional skill filter on LIS document.* publish only.
-   * Not a platform data-plane hop. Set BEDD_ENABLED=false to force off;
-   * unset = auto (on when /usr/local/bin/bedd is present).
+   * PII field stripping on LIS document.* publish. Field-name based; content
+   * level redaction is diri-agent-guardrails' job.
    */
-  bedd: {
-    bin: process.env.BEDD_BIN || '/usr/local/bin/bedd',
-    skillsDir: process.env.BEDD_SKILLS_DIR || '/opt/bedd/skills',
-    skill: process.env.BEDD_SKILL || 'drop_fields',
+  pii: {
     dropFields:
-      process.env.BEDD_DROP_FIELDS ||
+      process.env.PII_DROP_FIELDS ||
       'ssn,socialSecurityNumber,email,phone,phoneNumber,password,secret,apiKey,creditCard',
-    get enabled(): boolean | null {
-      const raw = (process.env.BEDD_ENABLED || '').trim().toLowerCase();
-      if (raw === '1' || raw === 'true' || raw === 'yes') return true;
-      if (raw === '0' || raw === 'false' || raw === 'no') return false;
-      return null;
-    },
   },
 
   // Auth is handled by API Gateway - this service just reads user context from headers
