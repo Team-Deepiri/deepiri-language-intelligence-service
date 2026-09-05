@@ -272,6 +272,7 @@ export class IntelligenceDocumentService {
             documentKind: updated.documentKind,
             correlationId,
             piiFieldsStripped: true,
+            piiRedactions: sanitized.redactions,
           },
         });
 
