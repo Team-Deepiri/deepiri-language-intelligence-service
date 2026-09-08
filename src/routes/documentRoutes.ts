@@ -8,6 +8,7 @@ import { documentService, resolveFileDocumentType } from '../services/documentSe
 import { authenticate } from './middleware/auth';
 import { logger } from '@team-deepiri/shared-utils';
 import { validate } from '../middleware/inputValidation';
+import { documentReadRateLimiter } from '../middleware/rateLimiters';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -23,13 +24,6 @@ const listRateLimiter = rateLimit({
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
-});
-const documentReadRateLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 120,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many document read requests, please try again later.' },
 });
 const reprocessRateLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -123,7 +117,7 @@ router.post(
         documentKind: req.body.documentKind,
         intelligenceProfile: req.body.intelligenceProfile,
         profileHints,
-        documentUrl: uploadResult.url,
+        documentUrl: uploadResult.storageKey,
         documentStorageKey: uploadResult.storageKey,
         fileSize: uploadResult.fileSize,
         documentType: resolveFileDocumentType(
@@ -190,6 +184,33 @@ router.get(
       res.json({ success: true, data: row });
     } catch (error: any) {
       res.status(500).json({ error: 'Failed to fetch document', message: error.message });
+    }
+  }
+);
+
+/**
+ * GET /api/v1/documents/:id/download-url
+ * Documents are private in storage — this hands back a fresh, short-lived
+ * presigned link rather than a URL that could be persisted/reused forever.
+ */
+router.get(
+  '/:id/download-url',
+  documentReadRateLimiter,
+  authenticate,
+  validate([param('id').isUUID().withMessage('Invalid document ID format')]),
+  async (req: Request, res: Response) => {
+    try {
+      const row = await intelligenceDocumentService.getById(req.params.id, requestScope(req));
+      if (!row) {
+        return res.status(404).json({ error: 'Document not found' });
+      }
+
+      const expiresIn = 900; // 15 minutes
+      const url = await documentService.getPresignedDownloadUrl(row.documentStorageKey ?? row.documentUrl, expiresIn);
+      res.json({ success: true, data: { url, expiresIn } });
+    } catch (error: any) {
+      logger.error('Error generating document download URL', { documentId: req.params.id, error: error.message });
+      res.status(500).json({ error: 'Failed to generate download URL', message: error.message });
     }
   }
 );

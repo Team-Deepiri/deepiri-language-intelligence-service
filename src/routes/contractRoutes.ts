@@ -10,6 +10,7 @@ import { authenticate } from './middleware/auth';
 import { handleValidationErrors } from './middleware/validation';
 import { logger } from '@team-deepiri/shared-utils';
 import { validate, commonValidations } from '../middleware/inputValidation';
+import { documentReadRateLimiter as downloadUrlRateLimiter } from '../middleware/rateLimiters';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -50,14 +51,15 @@ router.post(
         jurisdiction: req.body.jurisdiction,
         effectiveDate: new Date(req.body.effectiveDate),
         expirationDate: req.body.expirationDate ? new Date(req.body.expirationDate) : undefined,
-        documentUrl: uploadResult.url,
+        documentUrl: uploadResult.storageKey,
+        documentStorageKey: uploadResult.storageKey,
         contentType: uploadResult.mimeType,
         userId: req.user?.id,
         organizationId: req.user?.organizationId,
         tags: req.body.tags ? JSON.parse(req.body.tags) : [],
         notes: req.body.notes,
       });
-      
+
       // Trigger async processing
       contractIntelligenceService.processContractAsync(contract.id).catch((error) => {
         logger.error('Failed to process contract asynchronously', { contractId: contract.id, error });
@@ -93,6 +95,35 @@ router.get(
       res.json({ success: true, data: contract });
     } catch (error: any) {
       res.status(500).json({ error: 'Failed to fetch contract', message: error.message });
+    }
+  }
+);
+
+/**
+ * GET /api/v1/contracts/:id/download-url
+ * Documents are private in storage — this hands back a fresh, short-lived
+ * presigned link rather than a URL that could be persisted/reused forever.
+ */
+router.get(
+  '/:id/download-url',
+  downloadUrlRateLimiter,
+  authenticate,
+  validate([
+    param('id').isUUID().withMessage('Invalid contract ID format')
+  ]),
+  async (req: Request, res: Response) => {
+    try {
+      const contract = await contractIntelligenceService.getContractById(req.params.id);
+      if (!contract) {
+        return res.status(404).json({ error: 'Contract not found' });
+      }
+
+      const expiresIn = 900; // 15 minutes
+      const url = await documentService.getPresignedDownloadUrl(contract.documentStorageKey ?? contract.documentUrl, expiresIn);
+      res.json({ success: true, data: { url, expiresIn } });
+    } catch (error: any) {
+      logger.error('Error generating contract download URL', { contractId: req.params.id, error: error.message });
+      res.status(500).json({ error: 'Failed to generate download URL', message: error.message });
     }
   }
 );
