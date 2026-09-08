@@ -7,21 +7,21 @@ If your database already has tables but no migration history, you need to baseli
 ### Option 1: Using the baseline script (Recommended)
 
 ```bash
-cd deepiri-platform/platform-services/backend/deepiri-language-intelligence-service
+cd deepiri-control-plane/platform-services/backend/deepiri-language-intelligence-service
 npm run prisma:baseline
 ```
 
 Or directly:
 
 ```bash
-cd deepiri-platform/platform-services/backend/deepiri-language-intelligence-service
+cd deepiri-control-plane/platform-services/backend/deepiri-language-intelligence-service
 bash scripts/baseline-migration.sh
 ```
 
 ### Option 2: Manual baseline
 
 ```bash
-cd deepiri-platform/platform-services/backend/deepiri-language-intelligence-service
+cd deepiri-control-plane/platform-services/backend/deepiri-language-intelligence-service
 
 # Create migrations directory if it doesn't exist
 mkdir -p prisma/migrations
