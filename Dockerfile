@@ -1,26 +1,4 @@
-# LIS — Alpine/musl. Embed Bedd via multi-stage FROM (required).
-# Default: published GHCR image. Compose passes BEDD_IMAGE (see x-bedd-build-args).
-# Do not retag a local build as ghcr.io/team-deepiri/bedd:* — that shadows pulls.
-ARG BEDD_IMAGE=ghcr.io/team-deepiri/bedd:0.8
-FROM ${BEDD_IMAGE} AS bedd
-
 FROM ghcr.io/team-deepiri/deepiri-suite:20-alpine
-# Bedd runtime — LIS-only document.* skill filter (musl for Alpine).
-# Not a Compose sidecar; not embedded into other platform workers.
-COPY --from=bedd /opt/bedd/bedd-musl /usr/local/bin/bedd
-COPY --from=bedd /opt/bedd/skills /opt/bedd/skills
-ENV BEDD_SKILLS_DIR=/opt/bedd/skills
-ENV BEDD_ENABLED=true
-ENV BEDD_SKILL=drop_fields
-ENV BEDD_DROP_FIELDS=ssn,socialSecurityNumber,email,phone,phoneNumber,password,secret,apiKey,creditCard
-
-# Bedd runtime (Bun-style) — musl binary for Alpine
-COPY --from=bedd /opt/bedd/bedd-musl /usr/local/bin/bedd
-COPY --from=bedd /opt/bedd/skills /opt/bedd/skills
-ENV BEDD_SKILLS_DIR=/opt/bedd/skills
-ENV BEDD_BUS_URL=redis://redis:6379
-ENV BEDD_DLQ_STREAM=bedd.dlq
-
 # @team-deepiri/shared-utils is a local `file:` dependency (package-lock.json's
 # entries for it are not a resolvable published-tag reference, despite the old
 # comment here claiming otherwise) — build it locally and strip its lockfile
