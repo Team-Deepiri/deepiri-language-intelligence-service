@@ -1,18 +1,74 @@
 name: CodeQL
 
 on:
-  pull_request:
-    branches: [main, dev]
   push:
     branches: [main, dev]
-
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE*'
+  pull_request:
+    branches: [main, dev]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE*'
+  workflow_dispatch:
 permissions:
   actions: read
   contents: read
   security-events: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  push-gate:
+    name: Push throttle (every 5th push)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    outputs:
+      run-analysis: ${{ steps.gate.outputs.run-analysis }}
+    steps:
+      - name: Gate CodeQL to every 5th push
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.CI_PUSH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" != "push" ]]; then
+            echo "run-analysis=true" >> "$GITHUB_OUTPUT"
+            echo "Event ${GITHUB_EVENT_NAME}: running CodeQL."
+            exit 0
+          fi
+          counter_var="LIS_CODEQL_PUSH_COUNTER_${GITHUB_REF_NAME^^}"
+          prev=0
+          if gh variable get "$counter_var" >/dev/null 2>&1; then
+            prev="$(gh variable get "$counter_var")"
+          fi
+          next=$((prev + 1))
+          if ! gh variable set "$counter_var" --value "$next" >/dev/null 2>&1; then
+            echo "::warning::Could not increment repo variable ${counter_var}. CodeQL will run on every push. Grant the workflow token 'Actions: write' or add a CI_PUSH_TOKEN secret."
+            echo "run-analysis=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ $((next % 5)) -eq 0 ]]; then
+            echo "run-analysis=true" >> "$GITHUB_OUTPUT"
+            echo "${counter_var}=${next} (multiple of 5): running CodeQL."
+          else
+            echo "run-analysis=false" >> "$GITHUB_OUTPUT"
+            echo "${counter_var}=${next}: skipping CodeQL ($((5 - next % 5)) push(es) to next run)."
+          fi
+
   analyze:
+    needs: push-gate
+    if: needs.push-gate.outputs.run-analysis == 'true'
+    timeout-minutes: 20
     name: Analyze (javascript-typescript)
     runs-on: ubuntu-latest
 
