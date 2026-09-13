@@ -1,6 +1,15 @@
 name: Deepiri CI - deepiri-language-intelligence-service
 
 on:
+  push:
+    branches:
+      - main
+      - dev
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE*'
   pull_request:
     branches:
       - main
@@ -20,7 +29,48 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  push-gate:
+    name: Push throttle (every 5th push)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    outputs:
+      run-ci: ${{ steps.gate.outputs.run-ci }}
+    steps:
+      - name: Gate CI to every 5th push on main/dev
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.CI_PUSH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" != "push" ]]; then
+            echo "run-ci=true" >> "$GITHUB_OUTPUT"
+            echo "Event ${GITHUB_EVENT_NAME}: running CI."
+            exit 0
+          fi
+          counter_var="LIS_CI_PUSH_COUNTER_${GITHUB_REF_NAME^^}"
+          prev=0
+          if gh variable get "$counter_var" >/dev/null 2>&1; then
+            prev="$(gh variable get "$counter_var")"
+          fi
+          next=$((prev + 1))
+          if ! gh variable set "$counter_var" --value "$next" >/dev/null 2>&1; then
+            echo "::warning::Could not increment repo variable ${counter_var}. CI will run on every push. Grant the workflow token 'Actions: write' or add a CI_PUSH_TOKEN secret."
+            echo "run-ci=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ $((next % 5)) -eq 0 ]]; then
+            echo "run-ci=true" >> "$GITHUB_OUTPUT"
+            echo "${counter_var}=${next} (multiple of 5): running CI."
+          else
+            echo "run-ci=false" >> "$GITHUB_OUTPUT"
+            echo "${counter_var}=${next}: skipping CI ($((5 - next % 5)) push(es) to next run)."
+          fi
+
   ci:
+    needs: push-gate
+    if: needs.push-gate.outputs.run-ci == 'true'
     timeout-minutes: 20
     name: Test, Build & Docker
     runs-on: ubuntu-latest
