@@ -373,7 +373,6 @@ model DocumentChunk {
   updatedAt    DateTime      @updatedAt @map("updated_at") @db.Timestamp(6)
   analysisJobs AnalysisJob[]
   document     Document      @relation("DocumentChunks", fields: [documentId], references: [id], onDelete: Cascade)
-  embeddings   Embedding[]   @relation("ChunkEmbeddings")
 
   @@unique([documentId, chunkOrder])
   @@index([documentId])
@@ -417,24 +416,6 @@ model AnalysisResult {
 
   @@index([userId])
   @@map("analysis_results")
-}
-
-model Embedding {
-  id              String                 @id @default(uuid()) @db.Uuid
-  chunkId         String                 @db.Uuid
-  userId          String                 @db.Uuid
-  model           String                 @db.VarChar(200)
-  dims            Int
-  vector          Unsupported("vector")? @map("vector")
-  vector_fallback Json?                  @map("vector_fallback")
-  metadata        Json?                  @map("metadata")
-  createdAt       DateTime               @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt       DateTime               @updatedAt @map("updated_at") @db.Timestamp(6)
-  chunk           DocumentChunk          @relation("ChunkEmbeddings", fields: [chunkId], references: [id], onDelete: Cascade)
-
-  @@index([userId, createdAt])
-  @@index([chunkId])
-  @@map("embeddings")
 }
 
 model PromptTemplate {
